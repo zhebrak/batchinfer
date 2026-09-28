@@ -1,0 +1,207 @@
+{#- One page shape for a run and for the index: a link back to the index (index, on a run's page), title,
+    subtitle, warnings, tables, a note, links.
+    A table is {caption, header, rows: [{head, cells, group}], fmt} plus, on the index, id, filters and numeric (per
+    cell column, whether it holds numbers: its blanks align right); caption may be none. header is none or
+    [{text, help, filter}], plus numeric on the index, which right-aligns the name; head is none or {text, href, help, sub, sort}: a linked head shows
+    text as the link, with help as its tooltip and sub in small type under it, and sorts by sort. An unlinked head's
+    help is bench/glossary.py's line: a name with one is underlined dotted and shows it as a tooltip, in a header
+    or a row head alike. A blank cell shows a muted '-'. A Chips cell is k=v badges. A Cell has its own text, sort
+    key and tooltip, and may link or carry a mark badge. Rows that share a group (the index's job) share a stripe.
+    filters are [{col, label, options}], one select each, col counting the row header as 0.
+    Bootstrap styles the tables and draws the tooltips, and sortable-tablesort sorts every table with a header row,
+    all from jsDelivr pinned by version and SRI hash; offline the tables show plain, with the browser's own title
+    tooltips. A header's label is a button so the keyboard can sort too.
+    charts are [{id, title, description, wide}] cards below the tables (bench/charts.py); chart_data holds each
+    chart's light and dark Vega-Lite spec and, once and columnar, the datasets they draw. vega, vega-lite and
+    vega-embed load from jsDelivr, pinned the same way, only on a page with charts; offline each card keeps its
+    fallback text.
+    Markup stays XHTML-parseable (self-closed tags, no entities beyond what autoescape emits) so tests can parse it. -#}
+{% macro cell(v, use_fmt, sortable, numeric) %}{% if v is cell %}<td class="{{ 'n' if v.sort is number else 't' }}" data-sort="{{ v.sort }}"{% if v.title %} title="{{ v.title }}"{% endif %}>{% if v.href %}<a href="{{ v.href }}">{{ v.text }}</a>{% else %}{{ v.text }}{% endif %}{% if v.mark %} <span class="badge mark">{{ v.mark }}</span>{% endif %}</td>{% elif v is chips %}<td{% if not v %} class="blank"{% endif %}>{% for c in v %}<span class="badge chip">{{ c }}</span> {% else %}-{% endfor %}</td>{% else %}<td{% if v is number and v is not boolean %} class="n"{% if sortable %} data-sort="{{ v }}"{% endif %}{% elif v is none %} class="{{ 'n ' if numeric }}blank"{% if sortable %} data-sort=""{% endif %}{% endif %}>{{ v|fmt if use_fmt and v is float else v|show }}</td>{% endif %}{% endmacro %}
+{% macro table(t) %}
+{% if t.get("filters") %}
+<form class="filters w-100 d-flex flex-wrap align-items-end gap-2 mb-1" data-table="{{ t.id }}">
+{% for f in t.filters %}
+<label class="small">{{ f.label }}<select class="form-select form-select-sm" data-col="{{ f.col }}"><option value="">all</option>{% for o in f.options %}<option>{{ o }}</option>{% endfor %}</select></label>
+{% endfor %}
+<label class="small">contains<input type="search" class="form-control form-control-sm" placeholder="e.g. global trie"/></label>
+<output class="small text-body-secondary pb-1"></output>
+</form>
+{% endif %}
+<div class="table-responsive mw-100">
+<table{% if t.get("id") %} id="{{ t.id }}"{% endif %} class="table table-sm table-hover caption-top{% if not t.get("filters") %} table-striped{% endif %}{% if t.header %} sortable n-last{% endif %}">
+{% if t.caption %}
+<caption>{{ t.caption }}</caption>
+{% endif %}
+{% if t.header %}
+<thead><tr>{% for h in t.header %}<th scope="col"{% if h.get("numeric") %} class="n"{% endif %}><button type="button"{% if h.help %} class="term" title="{{ h.help }}" data-bs-toggle="tooltip"{% endif %}>{{ h.text|breakable }}</button></th>{% endfor %}</tr></thead>
+{% endif %}
+<tbody>
+{% for r in t.rows %}
+<tr{% if r.get("group") %} data-group="{{ r.group }}"{% endif %}>{% if r.head is none %}{% elif r.head.href %}<th scope="row" data-sort="{{ r.head.sort }}"><a href="{{ r.head.href }}"{% if r.head.help %} title="{{ r.head.help }}"{% endif %}>{{ r.head.text }}</a>{% if r.head.sub %}<br/><small class="text-body-secondary fw-normal">{{ r.head.sub }}</small>{% endif %}</th>{% elif r.head.help %}<th scope="row"><span class="term" tabindex="0" title="{{ r.head.help }}" data-bs-toggle="tooltip">{{ r.head.text }}</span></th>{% else %}<th scope="row">{{ r.head.text }}</th>{% endif %}{% for v in r.cells %}{{ cell(v, t.fmt, t.header, t.numeric[loop.index0] if t.get("numeric") else true) }}{% endfor %}</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endmacro %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{{ title }}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sortable-tablesort@4.1.7/dist/sortable-base.min.css" integrity="sha384-E59S7jQjZiYbeL3UQDX2SpcwbOx+tIKIVLjQMi/QENGFSG7MoMhNpBu/bzJtAtt8" crossorigin="anonymous"/>
+<script src="https://cdn.jsdelivr.net/npm/sortable-tablesort@4.1.7/dist/sortable.min.js" integrity="sha384-KJBzhWbOFhju6N4Bbl034ASSL8K5GirZoHBt0hZTiPcEKUUmzt5N2TIyg7bu5/AF" crossorigin="anonymous" defer="defer"></script>
+{% if charts %}
+<script src="https://cdn.jsdelivr.net/npm/vega@6.4.0/build/vega.min.js" integrity="sha384-VKdcJr3ZaBIJMbVcopTAI/JEuUkSY6qnwVu9iLuw0DnQ9gQ1JjsfZJhXFQAgNi43" crossorigin="anonymous" defer="defer"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js" integrity="sha384-9/70gNCfOu6G7xXvkdreMfuqAEsoaGJVXV2BN/JLRXkSmcGvnMqtsRx8HZtUWAvI" crossorigin="anonymous" defer="defer"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@7.3.0/build/vega-embed.min.js" integrity="sha384-Muy1QRxYFeNrA1zShc1KtN4OfipkR/61gt+HWqN57c1Zxu3Oe16TsilsruVVjfKL" crossorigin="anonymous" defer="defer"></script>
+{% endif %}
+<script>document.documentElement.dataset.bsTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"</script>
+<style>
+:root { color-scheme: light dark }
+body { padding: 1rem 1.5rem }
+h1 { font-size: 1.75rem; margin-bottom: .25rem }
+h1 + p { color: var(--bs-secondary-color); max-width: 72em }
+.back { font-size: .875rem; margin-bottom: .25rem }
+th, td { padding: .2em .6em; text-align: left }  /* offline fallback; Bootstrap's .table rules win when it loads */
+.table { width: max-content; font-size: .875rem }  /* too wide for the page: scroll in its box, not squeeze */
+caption { font-weight: 600; color: var(--bs-body-color) }
+th { font-weight: 600 }
+thead th { vertical-align: bottom }
+td, tbody th { white-space: nowrap }
+td.n { text-align: right; font-variant-numeric: tabular-nums }
+thead th.n { text-align: right }  /* a numeric column's name over its numbers */
+.table:not(.sortable) td.n { text-align: left }  /* a key/value table: every value starts where its label ends */
+td.blank { color: var(--bs-tertiary-color, GrayText) }
+/* the row's name stays in view while a wide table scrolls sideways; opaque offline too (Canvas: the page colour) */
+.table > :not(caption) > * > :first-child { position: sticky; left: 0; z-index: 1; background-color: var(--bs-table-bg, Canvas) }
+/* a label wraps at every space and underscore (min-content: a wrapped label's column is only as wide as its longest
+   word), a one-character word staying with its neighbour (.nw); the sort arrow (sortable-base's th::after) stays
+   beside the button's last line */
+.sortable thead th { white-space: nowrap }
+.sortable thead button { all: unset; display: inline-block; width: min-content; cursor: pointer; white-space: normal }
+.nw { white-space: nowrap }
+.sortable thead button:focus-visible, a:focus-visible, .term:focus-visible { outline: 2px solid; outline-offset: 2px }
+/* a name with hover text: underlined dotted, as abbr is (the header's button needs the higher specificity) */
+.term, .sortable thead button.term { text-decoration: underline dotted var(--bs-secondary-color, GrayText);
+                                     text-underline-offset: .2em }
+span.term { cursor: help }
+.chip { font-weight: normal; color: var(--bs-body-color); background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color) }
+.filters select, .filters input { min-width: 8em; max-width: 18em }
+.mark { font-weight: normal; color: var(--bs-warning-text-emphasis); background: var(--bs-warning-bg-subtle); border: 1px solid var(--bs-warning-border-subtle) }
+/* a filtered table stripes its shown rows, a job's rows alike (the script sets .odd); nth-of-type would count the
+   hidden ones */
+.table > tbody > tr.odd > * { --bs-table-bg-type: var(--bs-table-striped-bg) }
+/* charts: two per row where the page is wide enough, the time-series ones across the whole row; a half-width chart
+   left alone before a wide one gets the next half-width chart beside it (dense) */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(560px, 100%), 1fr)); gap: 1.25rem 2.5rem;
+          grid-auto-flow: row dense; margin-bottom: 1.5rem }
+.charts > .wide { grid-column: 1 / -1 }
+.chart-card { margin: 0; min-width: 0 }
+.chart-card figcaption { max-width: 72em; margin-bottom: .35rem }
+.chart { width: 100%; min-height: 8rem }
+.chart .vega-embed { width: 100% }
+.note { font-size: .875rem; color: var(--bs-secondary-color) }
+</style>
+</head>
+<body>
+<main>
+{% if index %}
+<p class="back"><a href="{{ index }}">← All runs</a></p>
+{% endif %}
+<h1>{{ title }}</h1>
+{% if subtitle %}
+<p>{{ subtitle }}</p>
+{% endif %}
+{% for w in warnings %}
+<p class="alert alert-warning py-2"><strong>Warning:</strong> {{ w }}</p>
+{% endfor %}
+<div class="d-flex flex-wrap align-items-start column-gap-5">
+{% for t in tables %}
+{{ table(t) }}
+{% endfor %}
+</div>
+{% if charts %}
+<section class="charts" aria-label="Charts">
+{% for c in charts %}
+<figure class="chart-card{% if c.wide %} wide{% endif %}">
+<figcaption><strong>{{ c.title }}</strong><br/><small class="text-body-secondary">{{ c.description }}</small></figcaption>
+<div class="chart" id="chart-{{ c.id }}" data-chart="{{ c.id }}"><p class="small text-body-secondary">This chart is drawn by Vega from cdn.jsdelivr.net, which did not load; the numbers behind it are in the JSON files linked below.</p></div>
+</figure>
+{% endfor %}
+</section>
+<script type="application/json" id="chart-data">{{ chart_data|tojson }}</script>
+{% endif %}
+{% for n in chart_notes %}
+<p class="small text-body-secondary">{{ n }}</p>
+{% endfor %}
+{% if note %}
+<p class="note">{{ note }}</p>
+{% endif %}
+</main>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous" defer="defer"></script>
+<script>//<![CDATA[
+document.addEventListener("DOMContentLoaded", function () {
+  // each chart in the page's theme, every spec reading the one copy of the data
+  var payload = document.getElementById("chart-data");
+  if (payload && window.vegaEmbed) {
+    var charts = JSON.parse(payload.textContent), datasets = {};
+    var theme = document.documentElement.dataset.bsTheme === "dark" ? "dark" : "light";
+    Object.keys(charts.datasets).forEach(function (name) {  // shipped as {field: [values]}; Vega reads rows
+      var cols = charts.datasets[name], fields = Object.keys(cols), n = fields.length ? cols[fields[0]].length : 0;
+      datasets[name] = [];
+      for (var i = 0; i < n; i++) {
+        var row = {};
+        fields.forEach(function (f) { row[f] = cols[f][i]; });
+        datasets[name].push(row);
+      }
+    });
+    document.querySelectorAll("[data-chart]").forEach(function (el) {
+      var spec = Object.assign({}, charts.specs[el.dataset.chart][theme], {datasets: datasets});
+      vegaEmbed(el, spec, {renderer: "canvas", actions: {export: true, source: false, compiled: false, editor: false}})
+        .catch(function (err) { el.textContent = "This chart failed to draw: " + err.message; });
+    });
+  }
+  if (window.bootstrap) {  // offline, the title attributes still show as the browser's own tooltips
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+      var tip = new bootstrap.Tooltip(el);
+      // a sort click leaves focus on the button, which would pin the tip open; hide it after Bootstrap's own
+      // zero-delay show timer
+      el.addEventListener("click", function () { setTimeout(function () { tip.hide(); }); });
+    });
+  }
+  // a row stays when every chosen select equals its cell's text and the row's text contains the search
+  document.querySelectorAll("form.filters").forEach(function (form) {
+    var table = document.getElementById(form.dataset.table);
+    function apply() {
+      var picks = Array.from(form.querySelectorAll("select")).filter(function (s) { return s.value; });
+      var text = form.querySelector("input").value.trim().toLowerCase();
+      var rows = Array.from(table.tBodies[0].rows), shown = 0;  // tBodies[0]: sorting swaps in a new tbody
+      var band = false, last = null;  // the stripe flips where the group changes; a row with none is its own
+      rows.forEach(function (row) {
+        var keep = picks.every(function (s) { return row.cells[+s.dataset.col].textContent.trim() === s.value; })
+          && row.textContent.toLowerCase().indexOf(text) !== -1;
+        row.hidden = !keep;
+        if (keep) {
+          var group = row.dataset.group;
+          if (group === undefined || group !== last) band = !band;
+          last = group;
+        }
+        row.classList.toggle("odd", keep && band);
+        shown += keep ? 1 : 0;
+      });
+      form.querySelector("output").textContent = shown + " of " + rows.length + " runs";
+    }
+    form.addEventListener("input", apply);
+    table.addEventListener("sort-end", apply);  // restripe in the new order
+    form.addEventListener("submit", function (e) { e.preventDefault(); });
+    apply();
+  });
+});
+//]]></script>
+{% if files %}
+<footer><p>Raw record: {% for f in files %}<a href="{{ f|urlencode }}">{{ f }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p></footer>
+{% endif %}
+</body>
+</html>

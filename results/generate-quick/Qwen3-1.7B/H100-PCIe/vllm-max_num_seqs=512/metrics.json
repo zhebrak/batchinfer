@@ -1,0 +1,87 @@
+{
+  "workload": "workloads/generate-quick.jsonl",
+  "workload_sha256": "6c20a3e6b76372d190a7557f83b1a19290d73162e571b8ee0d8ef4da6c8726b5",
+  "workload_meta_sha256": "4610f186195962d6796a23c68e58f699a8134129b018ac1029aee99c671df2b9",
+  "preset": "generate",
+  "size": "quick",
+  "mix": "gsm8k:64,wildchat:128",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "vllm",
+  "engine": "vllm",
+  "opts": {
+    "max_num_seqs": 512
+  },
+  "model": "Qwen/Qwen3-1.7B",
+  "model_revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+  "gpu": "NVIDIA H100 PCIe",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "0d19c51",
+  "git_commit_time": "2026-09-28T02:09:55+00:00",
+  "branch": null,
+  "timestamp": "2026-09-28T04:28:08+0000",
+  "load_s": 34.14,
+  "wall_s": 4.029,
+  "requests": 192,
+  "req_per_s": 47.66,
+  "input_tokens": 107423,
+  "unique_input_tokens": 37007,
+  "output_tokens": 53609,
+  "input_tok_per_s": 26664.9,
+  "unique_input_tok_per_s": 9186.0,
+  "output_tok_per_s": 13307.0,
+  "total_tok_per_s": 39972.0,
+  "ideal_prefix_reuse": 0.6555,
+  "gpu_util_mean": 91.6,
+  "mfu_pct": 10.0,
+  "mbu_pct": 79.8,
+  "utilisation": {
+    "model_tflop": 304.19,
+    "attention_flop_pct": 4.5,
+    "model_gb_moved": 6426.3,
+    "forward_passes": 519,
+    "query_tokens": 91240,
+    "peak_bf16_tflops": 756.0,
+    "peak_hbm_gb_per_s": 2000.0,
+    "shape_layers": 28,
+    "shape_hidden": 2048,
+    "shape_q_dim": 2048,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 6144,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2
+  },
+  "gpu_mem_peak_mb": 75283.0,
+  "length_violations": 0,
+  "by_source": {
+    "wildchat": {
+      "n": 128,
+      "kind": "generate",
+      "mean_output_tokens": 290.8
+    },
+    "gsm8k": {
+      "n": 64,
+      "kind": "generate",
+      "mean_output_tokens": 256,
+      "accuracy": 0.7812
+    }
+  },
+  "compare": {
+    "against": "results/generate-quick/Qwen3-1.7B/H100-PCIe/vllm/outputs.jsonl",
+    "generate": {
+      "n": 192,
+      "match": 0.944,
+      "identical": 0.7917
+    }
+  },
+  "backend_stats": {
+    "trace": true
+  },
+  "target_s": 60,
+  "over_budget": false
+}

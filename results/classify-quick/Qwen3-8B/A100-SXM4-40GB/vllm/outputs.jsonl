@@ -1,0 +1,376 @@
+{"id": "quality-00009", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00185", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "quality-00018", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00156", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00023", "text": "translate", "output_tokens": 2, "finish_reason": "stop", "token_ids": [14045, 151645]}
+{"id": "mmlu-00026", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00065", "text": "To", "output_tokens": 1, "finish_reason": "length", "token_ids": [1249]}
+{"id": "mmlu-00220", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00017", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00118", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00180", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00028", "text": "bill_due", "output_tokens": 3, "finish_reason": "stop", "token_ids": [29642, 75728, 151645]}
+{"id": "mmlu-00115", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00187", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00101", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "quality-00019", "text": "**", "output_tokens": 1, "finish_reason": "length", "token_ids": [334]}
+{"id": "clinc-00047", "text": "carry_on", "output_tokens": 3, "finish_reason": "stop", "token_ids": [73765, 4470, 151645]}
+{"id": "mmlu-00192", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00019", "text": "restaurant_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [33226, 96548, 151645]}
+{"id": "mmlu-00253", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00083", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00025", "text": "change_user_name", "output_tokens": 4, "finish_reason": "stop", "token_ids": [3373, 3317, 1269, 151645]}
+{"id": "mmlu-00127", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00217", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00022", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00231", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00082", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00028", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00006", "text": "what_song", "output_tokens": 3, "finish_reason": "stop", "token_ids": [12555, 57102, 151645]}
+{"id": "mmlu-00131", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00105", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00116", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00121", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00008", "text": "tell_joke", "output_tokens": 4, "finish_reason": "stop", "token_ids": [72357, 5374, 4740, 151645]}
+{"id": "mmlu-00080", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00058", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00151", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00036", "text": "lost_luggage", "output_tokens": 4, "finish_reason": "stop", "token_ids": [54337, 907, 43665, 151645]}
+{"id": "mmlu-00238", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00199", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00088", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00088", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00195", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "quality-00022", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00103", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00051", "text": "lost_luggage", "output_tokens": 4, "finish_reason": "stop", "token_ids": [54337, 907, 43665, 151645]}
+{"id": "mmlu-00164", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00031", "text": "book_flight", "output_tokens": 3, "finish_reason": "stop", "token_ids": [2190, 90370, 151645]}
+{"id": "mmlu-00036", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00074", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00168", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00068", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00093", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00089", "text": "jump_start", "output_tokens": 3, "finish_reason": "stop", "token_ids": [43296, 4906, 151645]}
+{"id": "mmlu-00013", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00201", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00069", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00188", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00054", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00205", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00221", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00053", "text": "find_phone", "output_tokens": 3, "finish_reason": "stop", "token_ids": [3903, 22154, 151645]}
+{"id": "clinc-00076", "text": "who_made_you", "output_tokens": 5, "finish_reason": "stop", "token_ids": [14623, 717, 1021, 70456, 151645]}
+{"id": "mmlu-00167", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00202", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00066", "text": "tire_change", "output_tokens": 4, "finish_reason": "stop", "token_ids": [83, 554, 15947, 151645]}
+{"id": "mmlu-00177", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00001", "text": "cancel_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [18515, 96548, 151645]}
+{"id": "quality-00002", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00002", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00033", "text": "meaning_of_life", "output_tokens": 4, "finish_reason": "stop", "token_ids": [56765, 3575, 72491, 151645]}
+{"id": "quality-00000", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00060", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00107", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00225", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00029", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00038", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00189", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00206", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00194", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "quality-00004", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00012", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00078", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00126", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00176", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00224", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00027", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00129", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00134", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00015", "text": "who_made_you", "output_tokens": 5, "finish_reason": "stop", "token_ids": [14623, 717, 1021, 70456, 151645]}
+{"id": "mmlu-00086", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00059", "text": "income", "output_tokens": 2, "finish_reason": "stop", "token_ids": [56966, 151645]}
+{"id": "mmlu-00001", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00032", "text": "travel_notification", "output_tokens": 3, "finish_reason": "stop", "token_ids": [48510, 34296, 151645]}
+{"id": "mmlu-00092", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00191", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00081", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00070", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00024", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00242", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00234", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "quality-00011", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00157", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00236", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00049", "text": "confirm_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [13800, 96548, 151645]}
+{"id": "mmlu-00004", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00137", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00240", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00198", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00050", "text": "rollover_401k", "output_tokens": 8, "finish_reason": "stop", "token_ids": [43684, 423, 62, 19, 15, 16, 74, 151645]}
+{"id": "mmlu-00062", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00067", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00237", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00003", "text": "ingredient_substitution", "output_tokens": 4, "finish_reason": "stop", "token_ids": [38525, 5228, 10446, 151645]}
+{"id": "mmlu-00125", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00142", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00193", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "quality-00020", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00021", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00013", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "clinc-00086", "text": "restaurant_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [33226, 96548, 151645]}
+{"id": "mmlu-00084", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00098", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00223", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00061", "text": "measurement_conversion", "output_tokens": 3, "finish_reason": "stop", "token_ids": [81425, 64132, 151645]}
+{"id": "clinc-00040", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00196", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00102", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00055", "text": "reminder_update", "output_tokens": 3, "finish_reason": "stop", "token_ids": [77905, 8882, 151645]}
+{"id": "mmlu-00150", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00073", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00114", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00057", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00228", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00175", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00093", "text": "weather", "output_tokens": 2, "finish_reason": "stop", "token_ids": [15206, 151645]}
+{"id": "mmlu-00247", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00072", "text": "restaurant_reviews", "output_tokens": 3, "finish_reason": "stop", "token_ids": [33226, 68706, 151645]}
+{"id": "mmlu-00153", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00106", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00159", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00087", "text": "pto_used", "output_tokens": 3, "finish_reason": "stop", "token_ids": [57991, 27803, 151645]}
+{"id": "mmlu-00033", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00160", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00073", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00090", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00037", "text": "directions", "output_tokens": 3, "finish_reason": "stop", "token_ids": [19071, 82, 151645]}
+{"id": "mmlu-00061", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00034", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "quality-00008", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "quality-00017", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00082", "text": "pay_bill", "output_tokens": 3, "finish_reason": "stop", "token_ids": [13890, 63153, 151645]}
+{"id": "mmlu-00254", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "quality-00021", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00117", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00080", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00143", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00039", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00007", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00099", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00184", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00079", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00130", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00021", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "clinc-00045", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00216", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00003", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00044", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00063", "text": "how_old_are_you", "output_tokens": 5, "finish_reason": "stop", "token_ids": [5158, 21108, 56855, 70456, 151645]}
+{"id": "clinc-00000", "text": "lost_luggage", "output_tokens": 4, "finish_reason": "stop", "token_ids": [54337, 907, 43665, 151645]}
+{"id": "quality-00013", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00064", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00135", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00255", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00044", "text": "are_you_a_bot", "output_tokens": 5, "finish_reason": "stop", "token_ids": [546, 70456, 4306, 38883, 151645]}
+{"id": "mmlu-00040", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00091", "text": "flight_status", "output_tokens": 3, "finish_reason": "stop", "token_ids": [38390, 4773, 151645]}
+{"id": "mmlu-00014", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00052", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00172", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00246", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00043", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00145", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00018", "text": "cancel_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [18515, 96548, 151645]}
+{"id": "mmlu-00091", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00203", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00090", "text": "oil_change_when", "output_tokens": 4, "finish_reason": "stop", "token_ids": [73813, 15947, 47636, 151645]}
+{"id": "clinc-00081", "text": "reminder_update", "output_tokens": 3, "finish_reason": "stop", "token_ids": [77905, 8882, 151645]}
+{"id": "mmlu-00179", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00211", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00152", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00010", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00119", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "quality-00005", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00210", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00041", "text": "travel_suggestion", "output_tokens": 4, "finish_reason": "stop", "token_ids": [48510, 643, 42116, 151645]}
+{"id": "quality-00012", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00089", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00077", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00165", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00235", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00245", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00017", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00027", "text": "meaning_of_life", "output_tokens": 4, "finish_reason": "stop", "token_ids": [56765, 3575, 72491, 151645]}
+{"id": "clinc-00054", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "quality-00001", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00108", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00139", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00219", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00173", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00251", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00074", "text": "what_song", "output_tokens": 3, "finish_reason": "stop", "token_ids": [12555, 57102, 151645]}
+{"id": "mmlu-00186", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00053", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00062", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00233", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "quality-00014", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00075", "text": "schedule_meeting", "output_tokens": 4, "finish_reason": "stop", "token_ids": [28630, 16612, 11619, 151645]}
+{"id": "mmlu-00049", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00005", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00014", "text": "cancel_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [18515, 96548, 151645]}
+{"id": "mmlu-00009", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00029", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00213", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00035", "text": "calendar_update", "output_tokens": 3, "finish_reason": "stop", "token_ids": [26258, 8882, 151645]}
+{"id": "mmlu-00023", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00100", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00030", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00043", "text": "credit_limit_change", "output_tokens": 4, "finish_reason": "stop", "token_ids": [23311, 14763, 15947, 151645]}
+{"id": "mmlu-00212", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "quality-00016", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "quality-00007", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00092", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "clinc-00078", "text": "recipe", "output_tokens": 2, "finish_reason": "stop", "token_ids": [25208, 151645]}
+{"id": "mmlu-00006", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00018", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00174", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "quality-00003", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00136", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00239", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00232", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00039", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00146", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00209", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00011", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00056", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00178", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00218", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00095", "text": "who_made_you", "output_tokens": 5, "finish_reason": "stop", "token_ids": [14623, 717, 1021, 70456, 151645]}
+{"id": "quality-00006", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00025", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00015", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00208", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00109", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00085", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00087", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00190", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00112", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00009", "text": "schedule_maintenance", "output_tokens": 4, "finish_reason": "stop", "token_ids": [28630, 717, 24559, 151645]}
+{"id": "mmlu-00138", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00008", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00068", "text": "calculator", "output_tokens": 2, "finish_reason": "stop", "token_ids": [88821, 151645]}
+{"id": "clinc-00065", "text": "confirm_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [13800, 96548, 151645]}
+{"id": "mmlu-00171", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00249", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00059", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00067", "text": "bill_balance", "output_tokens": 3, "finish_reason": "stop", "token_ids": [29642, 29396, 151645]}
+{"id": "mmlu-00042", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00182", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00070", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00230", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00140", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00214", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00110", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00120", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00011", "text": "ingredient_substitution", "output_tokens": 4, "finish_reason": "stop", "token_ids": [38525, 5228, 10446, 151645]}
+{"id": "mmlu-00141", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00012", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00200", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00046", "text": "flight_status", "output_tokens": 3, "finish_reason": "stop", "token_ids": [38390, 4773, 151645]}
+{"id": "clinc-00085", "text": "pto_request", "output_tokens": 3, "finish_reason": "stop", "token_ids": [57991, 7893, 151645]}
+{"id": "mmlu-00019", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00076", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00066", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00045", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00035", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00243", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00079", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00016", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00095", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00096", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00094", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00148", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00123", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00038", "text": "freeze_account", "output_tokens": 3, "finish_reason": "stop", "token_ids": [51638, 13500, 151645]}
+{"id": "mmlu-00162", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "quality-00023", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00058", "text": "current_location", "output_tokens": 3, "finish_reason": "stop", "token_ids": [3231, 13126, 151645]}
+{"id": "mmlu-00227", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00147", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00048", "text": "tire_change", "output_tokens": 4, "finish_reason": "stop", "token_ids": [83, 554, 15947, 151645]}
+{"id": "clinc-00084", "text": "international_visa", "output_tokens": 4, "finish_reason": "stop", "token_ids": [97597, 2273, 10761, 151645]}
+{"id": "clinc-00020", "text": "restaurant_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [33226, 96548, 151645]}
+{"id": "clinc-00069", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "clinc-00077", "text": "traffic", "output_tokens": 2, "finish_reason": "stop", "token_ids": [53987, 151645]}
+{"id": "mmlu-00063", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00149", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00083", "text": "min_payment", "output_tokens": 3, "finish_reason": "stop", "token_ids": [1065, 26696, 151645]}
+{"id": "mmlu-00154", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00055", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00250", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00004", "text": "who_made_you", "output_tokens": 5, "finish_reason": "stop", "token_ids": [14623, 717, 1021, 70456, 151645]}
+{"id": "mmlu-00163", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00041", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "mmlu-00046", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00229", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00022", "text": "interest_rate", "output_tokens": 3, "finish_reason": "stop", "token_ids": [12724, 9246, 151645]}
+{"id": "mmlu-00072", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00122", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00113", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00034", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00097", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00032", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00166", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00124", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00170", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00252", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00057", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00000", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00064", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00204", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00047", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00007", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00024", "text": "transfer", "output_tokens": 2, "finish_reason": "stop", "token_ids": [24188, 151645]}
+{"id": "mmlu-00031", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00133", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00010", "text": "cancel_reservation", "output_tokens": 3, "finish_reason": "stop", "token_ids": [18515, 96548, 151645]}
+{"id": "mmlu-00226", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "quality-00015", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00026", "text": "routing", "output_tokens": 2, "finish_reason": "stop", "token_ids": [73320, 151645]}
+{"id": "mmlu-00104", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00071", "text": "freeze_account", "output_tokens": 3, "finish_reason": "stop", "token_ids": [51638, 13500, 151645]}
+{"id": "clinc-00056", "text": "reminder_update", "output_tokens": 3, "finish_reason": "stop", "token_ids": [77905, 8882, 151645]}
+{"id": "mmlu-00161", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00222", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00181", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00051", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "clinc-00030", "text": "spending_history", "output_tokens": 4, "finish_reason": "stop", "token_ids": [2154, 2459, 19802, 151645]}
+{"id": "mmlu-00241", "text": "To", "output_tokens": 1, "finish_reason": "length", "token_ids": [1249]}
+{"id": "mmlu-00169", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00094", "text": "oos", "output_tokens": 3, "finish_reason": "stop", "token_ids": [78, 436, 151645]}
+{"id": "mmlu-00037", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00050", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00158", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00075", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "clinc-00052", "text": "calories", "output_tokens": 3, "finish_reason": "stop", "token_ids": [5416, 2433, 151645]}
+{"id": "clinc-00016", "text": "pto_used", "output_tokens": 3, "finish_reason": "stop", "token_ids": [57991, 27803, 151645]}
+{"id": "mmlu-00128", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00060", "text": "interest_rate", "output_tokens": 3, "finish_reason": "stop", "token_ids": [12724, 9246, 151645]}
+{"id": "mmlu-00048", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "quality-00010", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00144", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00071", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00002", "text": "ingredient_substitution", "output_tokens": 4, "finish_reason": "stop", "token_ids": [38525, 5228, 10446, 151645]}
+{"id": "mmlu-00111", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}
+{"id": "clinc-00042", "text": "shopping_list", "output_tokens": 3, "finish_reason": "stop", "token_ids": [50566, 2019, 151645]}
+{"id": "mmlu-00183", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00244", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00155", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00207", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "mmlu-00248", "text": "A", "output_tokens": 1, "finish_reason": "length", "token_ids": [32]}
+{"id": "clinc-00005", "text": "user_name", "output_tokens": 3, "finish_reason": "stop", "token_ids": [872, 1269, 151645]}
+{"id": "mmlu-00132", "text": "B", "output_tokens": 1, "finish_reason": "length", "token_ids": [33]}
+{"id": "mmlu-00020", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00215", "text": "D", "output_tokens": 1, "finish_reason": "length", "token_ids": [35]}
+{"id": "mmlu-00197", "text": "C", "output_tokens": 1, "finish_reason": "length", "token_ids": [34]}

@@ -1,0 +1,78 @@
+{
+  "workload": "workloads/generate-quick.jsonl",
+  "workload_sha256": "6c20a3e6b76372d190a7557f83b1a19290d73162e571b8ee0d8ef4da6c8726b5",
+  "workload_meta_sha256": "8c52d392d23067c06a62cf0197c247442ad6abc1f88c2f36b19b68f8f77cd713",
+  "preset": "generate",
+  "size": "quick",
+  "mix": "gsm8k:64,wildchat:128",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "vllm",
+  "engine": "vllm",
+  "opts": {},
+  "model": "Qwen/Qwen3-8B",
+  "model_revision": "b968826d9c46dd6066d109eabc6255188de91218",
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "0d19c51",
+  "git_commit_time": "2026-09-28T02:09:55+00:00",
+  "branch": null,
+  "timestamp": "2026-09-28T04:21:23+0000",
+  "load_s": 36.5,
+  "wall_s": 14.801,
+  "requests": 192,
+  "req_per_s": 12.97,
+  "input_tokens": 107423,
+  "unique_input_tokens": 37007,
+  "output_tokens": 53609,
+  "input_tok_per_s": 7257.9,
+  "unique_input_tok_per_s": 2500.3,
+  "output_tok_per_s": 3622.0,
+  "total_tok_per_s": 10880.0,
+  "ideal_prefix_reuse": 0.6555,
+  "gpu_util_mean": 99.2,
+  "mfu_pct": 29.7,
+  "mbu_pct": 60.0,
+  "utilisation": {
+    "model_tflop": 1369.3,
+    "attention_flop_pct": 2.6,
+    "model_gb_moved": 13806.9,
+    "forward_passes": 518,
+    "query_tokens": 91240,
+    "peak_bf16_tflops": 312.0,
+    "peak_hbm_gb_per_s": 1555.0,
+    "shape_layers": 36,
+    "shape_hidden": 4096,
+    "shape_q_dim": 4096,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 12288,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2
+  },
+  "gpu_mem_peak_mb": 38125.0,
+  "length_violations": 0,
+  "by_source": {
+    "wildchat": {
+      "n": 128,
+      "kind": "generate",
+      "mean_output_tokens": 290.8
+    },
+    "gsm8k": {
+      "n": 64,
+      "kind": "generate",
+      "mean_output_tokens": 256,
+      "accuracy": 0.8906
+    }
+  },
+  "compare": null,
+  "backend_stats": {
+    "trace": true
+  },
+  "target_s": 60,
+  "over_budget": false
+}

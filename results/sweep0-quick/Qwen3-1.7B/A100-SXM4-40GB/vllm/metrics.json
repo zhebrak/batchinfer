@@ -1,0 +1,72 @@
+{
+  "workload": "workloads/sweep0-quick.jsonl",
+  "workload_sha256": "cae946b966237039be28c817c178b8beace7e9c990ee5cd418eccebe02392166",
+  "workload_meta_sha256": "71aed22b611d5552ebdfb3d27a911e6d1140dbce8c368af186ef3a00cc4b493a",
+  "preset": "sweep0",
+  "size": "quick",
+  "mix": "synthetic:320:shared_frac=0:groups=8:output_len=64",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "vllm",
+  "engine": "vllm",
+  "opts": {},
+  "model": "Qwen/Qwen3-1.7B",
+  "model_revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "0d19c51",
+  "git_commit_time": "2026-09-28T02:09:55+00:00",
+  "branch": null,
+  "timestamp": "2026-09-28T03:07:11+0000",
+  "load_s": 32.03,
+  "wall_s": 7.858,
+  "requests": 320,
+  "req_per_s": 40.72,
+  "input_tokens": 331791,
+  "unique_input_tokens": 330755,
+  "output_tokens": 20480,
+  "input_tok_per_s": 42225.5,
+  "unique_input_tok_per_s": 42093.6,
+  "output_tok_per_s": 2606.4,
+  "total_tok_per_s": 44831.8,
+  "ideal_prefix_reuse": 0.0031,
+  "gpu_util_mean": 97.3,
+  "mfu_pct": 42.8,
+  "mbu_pct": 24.5,
+  "utilisation": {
+    "model_tflop": 1049.18,
+    "attention_flop_pct": 4.2,
+    "model_gb_moved": 2987.6,
+    "forward_passes": 139,
+    "query_tokens": 351951,
+    "peak_bf16_tflops": 312.0,
+    "peak_hbm_gb_per_s": 1555.0,
+    "shape_layers": 28,
+    "shape_hidden": 2048,
+    "shape_q_dim": 2048,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 6144,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2
+  },
+  "gpu_mem_peak_mb": 37971.0,
+  "length_violations": 0,
+  "by_source": {
+    "synthetic": {
+      "n": 320,
+      "kind": "generate",
+      "mean_output_tokens": 64
+    }
+  },
+  "compare": null,
+  "backend_stats": {
+    "trace": true
+  },
+  "target_s": 60,
+  "over_budget": false
+}

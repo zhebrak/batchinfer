@@ -1,0 +1,99 @@
+{
+  "workload": "workloads/generate-quick.jsonl",
+  "workload_sha256": "6c20a3e6b76372d190a7557f83b1a19290d73162e571b8ee0d8ef4da6c8726b5",
+  "workload_meta_sha256": "4610f186195962d6796a23c68e58f699a8134129b018ac1029aee99c671df2b9",
+  "preset": "generate",
+  "size": "quick",
+  "mix": "gsm8k:64,wildchat:128",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "naive",
+  "engine": "naive",
+  "opts": {
+    "order": "max_tokens_desc",
+    "max_batch_tokens": 65536
+  },
+  "model": "Qwen/Qwen3-8B",
+  "model_revision": "b968826d9c46dd6066d109eabc6255188de91218",
+  "gpu": "NVIDIA H100 PCIe",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "0d19c51",
+  "git_commit_time": "2026-09-28T02:09:55+00:00",
+  "branch": null,
+  "timestamp": "2026-09-28T03:19:40+0000",
+  "load_s": 16.23,
+  "wall_s": 211.767,
+  "requests": 192,
+  "req_per_s": 0.91,
+  "input_tokens": 107423,
+  "unique_input_tokens": 37007,
+  "output_tokens": 53609,
+  "input_tok_per_s": 507.3,
+  "unique_input_tok_per_s": 174.8,
+  "output_tok_per_s": 253.2,
+  "total_tok_per_s": 760.4,
+  "ideal_prefix_reuse": 0.6555,
+  "gpu_util_mean": 75.9,
+  "mfu_pct": 1.5,
+  "mbu_pct": 8.2,
+  "utilisation": {
+    "model_tflop": 2358.82,
+    "attention_flop_pct": 2.4,
+    "model_gb_moved": 34921.8,
+    "forward_passes": 1913,
+    "query_tokens": 160840,
+    "peak_bf16_tflops": 756.0,
+    "peak_hbm_gb_per_s": 2000.0,
+    "shape_layers": 36,
+    "shape_hidden": 4096,
+    "shape_q_dim": 4096,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 12288,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2
+  },
+  "gpu_mem_peak_mb": 31101.0,
+  "length_violations": 0,
+  "by_source": {
+    "wildchat": {
+      "n": 128,
+      "kind": "generate",
+      "mean_output_tokens": 290.8
+    },
+    "gsm8k": {
+      "n": 64,
+      "kind": "generate",
+      "mean_output_tokens": 256,
+      "accuracy": 0.9062
+    }
+  },
+  "compare": {
+    "against": "results/generate-quick/Qwen3-8B/H100-PCIe/vllm/outputs.jsonl",
+    "generate": {
+      "n": 192,
+      "match": 0.5517,
+      "identical": 0.3854
+    }
+  },
+  "backend_stats": {
+    "prefill_s": 12.0278,
+    "decode_s": 199.6535,
+    "prefill_tok_per_s": 8931.3,
+    "decode_tok_per_s": 267.5,
+    "mean_decode_batch": 28.04,
+    "wasted_decode_slots": 5312,
+    "padding_waste_pct": 53.95,
+    "groups": 8,
+    "order": "max_tokens_desc",
+    "max_batch_tokens": 65536,
+    "prefix_hit_pct": 0.0,
+    "peak_mem_reserved_gb": 29.57
+  },
+  "target_s": 60,
+  "over_budget": true
+}

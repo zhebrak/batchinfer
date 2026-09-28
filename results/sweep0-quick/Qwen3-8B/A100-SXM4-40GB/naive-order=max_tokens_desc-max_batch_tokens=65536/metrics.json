@@ -1,0 +1,93 @@
+{
+  "workload": "workloads/sweep0-quick.jsonl",
+  "workload_sha256": "cae946b966237039be28c817c178b8beace7e9c990ee5cd418eccebe02392166",
+  "workload_meta_sha256": "71aed22b611d5552ebdfb3d27a911e6d1140dbce8c368af186ef3a00cc4b493a",
+  "preset": "sweep0",
+  "size": "quick",
+  "mix": "synthetic:320:shared_frac=0:groups=8:output_len=64",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "naive",
+  "engine": "naive",
+  "opts": {
+    "order": "max_tokens_desc",
+    "max_batch_tokens": 65536
+  },
+  "model": "Qwen/Qwen3-8B",
+  "model_revision": "b968826d9c46dd6066d109eabc6255188de91218",
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "0d19c51",
+  "git_commit_time": "2026-09-28T02:09:55+00:00",
+  "branch": null,
+  "timestamp": "2026-09-28T03:29:47+0000",
+  "load_s": 16.9,
+  "wall_s": 55.585,
+  "requests": 320,
+  "req_per_s": 5.76,
+  "input_tokens": 331791,
+  "unique_input_tokens": 330755,
+  "output_tokens": 20480,
+  "input_tok_per_s": 5969.1,
+  "unique_input_tok_per_s": 5950.5,
+  "output_tok_per_s": 368.4,
+  "total_tok_per_s": 6337.5,
+  "ideal_prefix_reuse": 0.0031,
+  "gpu_util_mean": 97.8,
+  "mfu_pct": 29.0,
+  "mbu_pct": 10.5,
+  "utilisation": {
+    "model_tflop": 5028.89,
+    "attention_flop_pct": 2.3,
+    "model_gb_moved": 9038.6,
+    "forward_passes": 384,
+    "query_tokens": 351951,
+    "peak_bf16_tflops": 312.0,
+    "peak_hbm_gb_per_s": 1555.0,
+    "shape_layers": 36,
+    "shape_hidden": 4096,
+    "shape_q_dim": 4096,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 12288,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2
+  },
+  "gpu_mem_peak_mb": 31987.0,
+  "length_violations": 0,
+  "by_source": {
+    "synthetic": {
+      "n": 320,
+      "kind": "generate",
+      "mean_output_tokens": 64
+    }
+  },
+  "compare": {
+    "against": "results/sweep0-quick/Qwen3-8B/A100-SXM4-40GB/vllm/outputs.jsonl",
+    "generate": {
+      "n": 320,
+      "match": 0.734,
+      "identical": 0.5219
+    }
+  },
+  "backend_stats": {
+    "prefill_s": 27.0975,
+    "decode_s": 28.2393,
+    "prefill_tok_per_s": 12244.3,
+    "decode_tok_per_s": 713.9,
+    "mean_decode_batch": 53.33,
+    "wasted_decode_slots": 0,
+    "padding_waste_pct": 0.04,
+    "groups": 6,
+    "order": "max_tokens_desc",
+    "max_batch_tokens": 65536,
+    "prefix_hit_pct": 0.0,
+    "peak_mem_reserved_gb": 30.73
+  },
+  "target_s": 60,
+  "over_budget": false
+}

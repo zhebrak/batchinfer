@@ -1,0 +1,113 @@
+{
+  "workload": "workloads/generate-quick.jsonl",
+  "workload_sha256": "6c20a3e6b76372d190a7557f83b1a19290d73162e571b8ee0d8ef4da6c8726b5",
+  "workload_meta_sha256": "8c52d392d23067c06a62cf0197c247442ad6abc1f88c2f36b19b68f8f77cd713",
+  "preset": "generate",
+  "size": "quick",
+  "mix": "gsm8k:64,wildchat:128",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "batchinfer",
+  "engine": "batchinfer",
+  "opts": {
+    "admission": "groups"
+  },
+  "model": "Qwen/Qwen3-8B",
+  "model_revision": "b968826d9c46dd6066d109eabc6255188de91218",
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "0d19c51",
+  "git_commit_time": "2026-09-28T02:09:55+00:00",
+  "branch": null,
+  "timestamp": "2026-09-28T03:54:09+0000",
+  "load_s": 18.92,
+  "wall_s": 28.376,
+  "requests": 192,
+  "req_per_s": 6.77,
+  "input_tokens": 107423,
+  "unique_input_tokens": 37007,
+  "output_tokens": 53609,
+  "input_tok_per_s": 3785.6,
+  "unique_input_tok_per_s": 1304.1,
+  "output_tok_per_s": 1889.2,
+  "total_tok_per_s": 5674.8,
+  "ideal_prefix_reuse": 0.6555,
+  "gpu_util_mean": 97.3,
+  "mfu_pct": 15.5,
+  "mbu_pct": 65.9,
+  "utilisation": {
+    "model_tflop": 1369.3,
+    "attention_flop_pct": 2.6,
+    "model_gb_moved": 29079.3,
+    "forward_passes": 1527,
+    "query_tokens": 91240,
+    "peak_bf16_tflops": 312.0,
+    "peak_hbm_gb_per_s": 1555.0,
+    "shape_layers": 36,
+    "shape_hidden": 4096,
+    "shape_q_dim": 4096,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 12288,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2
+  },
+  "gpu_mem_peak_mb": 38403.0,
+  "length_violations": 0,
+  "by_source": {
+    "wildchat": {
+      "n": 128,
+      "kind": "generate",
+      "mean_output_tokens": 290.8
+    },
+    "gsm8k": {
+      "n": 64,
+      "kind": "generate",
+      "mean_output_tokens": 256,
+      "accuracy": 0.875
+    }
+  },
+  "compare": {
+    "against": "results/generate-quick/Qwen3-8B/A100-SXM4-40GB/vllm/outputs.jsonl",
+    "generate": {
+      "n": 192,
+      "match": 0.5537,
+      "identical": 0.3698
+    }
+  },
+  "backend_stats": {
+    "steps": 1527,
+    "decode_only_steps": 1521,
+    "mean_step_tokens": 59.8,
+    "prefill_small_step_pct": 99.6,
+    "mean_decode_batch": 35.07,
+    "dense_mfu_pct": 15.1,
+    "gpu_busy_pct": 98.6,
+    "fused_layers": true,
+    "cuda_graphs": true,
+    "fa_version": 2,
+    "graph_step_pct": 99.6,
+    "chain_start_step": 513,
+    "prefill_budget": 16384,
+    "prefill_budget_adaptive": false,
+    "prefill_budget_peak": 16384,
+    "max_batch_tokens": 137936,
+    "order": "prefix_dfs",
+    "prefix_sharing": true,
+    "prefix_hit_pct": 64.79,
+    "ideal_prefix_reuse_page16": 0.6479,
+    "prefix_wait_steps": 3,
+    "pinned_blocks_peak": 69,
+    "trie_blocks_peak": 1258,
+    "kv_occupancy_pct": 73.3,
+    "kv_reserved_peak_pct": 25.3,
+    "kv_written_peak_pct": 18.4,
+    "peak_mem_reserved_gb": 36.77
+  },
+  "target_s": 60,
+  "over_budget": false
+}

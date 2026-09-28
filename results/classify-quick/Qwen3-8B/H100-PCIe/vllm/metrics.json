@@ -1,0 +1,85 @@
+{
+  "workload": "workloads/classify-quick.jsonl",
+  "workload_sha256": "c49ce11968ac90b739dc2456b7a1295f3f7974dd1cd838995b624cfda1bbca89",
+  "workload_meta_sha256": "549cc6ca5cabe7e84a3d138a313f0e95c95e0067882526e01b98b06d580b0133",
+  "preset": "classify",
+  "size": "quick",
+  "mix": "mmlu:256,clinc:96,quality:24",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "vllm",
+  "engine": "vllm",
+  "opts": {},
+  "model": "Qwen/Qwen3-8B",
+  "model_revision": "b968826d9c46dd6066d109eabc6255188de91218",
+  "gpu": "NVIDIA H100 PCIe",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "0d19c51",
+  "git_commit_time": "2026-09-28T02:09:55+00:00",
+  "branch": null,
+  "timestamp": "2026-09-28T04:03:47+0000",
+  "load_s": 35.72,
+  "wall_s": 2.519,
+  "requests": 376,
+  "req_per_s": 149.25,
+  "input_tokens": 408002,
+  "unique_input_tokens": 58885,
+  "output_tokens": 596,
+  "input_tok_per_s": 161956.0,
+  "unique_input_tok_per_s": 23374.3,
+  "output_tok_per_s": 236.6,
+  "total_tok_per_s": 162192.6,
+  "ideal_prefix_reuse": 0.8557,
+  "gpu_util_mean": 90.6,
+  "mfu_pct": 49.1,
+  "mbu_pct": 4.6,
+  "utilisation": {
+    "model_tflop": 936.02,
+    "attention_flop_pct": 7.2,
+    "model_gb_moved": 229.6,
+    "forward_passes": 10,
+    "query_tokens": 62494,
+    "peak_bf16_tflops": 756.0,
+    "peak_hbm_gb_per_s": 2000.0,
+    "shape_layers": 36,
+    "shape_hidden": 4096,
+    "shape_q_dim": 4096,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 12288,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2
+  },
+  "gpu_mem_peak_mb": 75457.0,
+  "length_violations": 0,
+  "by_source": {
+    "quality": {
+      "n": 24,
+      "kind": "classify",
+      "mean_output_tokens": 1,
+      "accuracy": 0.5
+    },
+    "mmlu": {
+      "n": 256,
+      "kind": "classify",
+      "mean_output_tokens": 1,
+      "accuracy": 0.8086
+    },
+    "clinc": {
+      "n": 96,
+      "kind": "classify",
+      "mean_output_tokens": 3.3,
+      "accuracy": 0.8125
+    }
+  },
+  "compare": null,
+  "backend_stats": {
+    "trace": true
+  },
+  "target_s": 60,
+  "over_budget": false
+}

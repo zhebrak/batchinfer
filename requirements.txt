@@ -1,0 +1,11 @@
+# What the published results ran on (torch 2.13.0+cu130, transformers 5.17.0, vLLM 0.30.0). The naive baseline's
+# cost depends on HF's SDPA/GQA dispatch and mask sizing, so pin rather than floor; metrics.json
+# records the versions of every run.
+torch==2.13.*
+transformers==5.17.*
+safetensors
+jinja2  # bench.report pages; transformers' chat templates already need it
+vllm==0.30.*  # kernels only: FlashAttention and the fused ops (executor.py, qwen3_fused.py); also the vLLM baseline
+pyarrow  # bench.sources reads the Hugging Face datasets' parquet files
+huggingface_hub  # bench.sources downloads single dataset files
+pytest

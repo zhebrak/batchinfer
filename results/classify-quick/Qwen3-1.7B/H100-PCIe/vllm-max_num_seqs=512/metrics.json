@@ -1,0 +1,94 @@
+{
+  "workload": "workloads/classify-quick.jsonl",
+  "workload_sha256": "c49ce11968ac90b739dc2456b7a1295f3f7974dd1cd838995b624cfda1bbca89",
+  "workload_meta_sha256": "549cc6ca5cabe7e84a3d138a313f0e95c95e0067882526e01b98b06d580b0133",
+  "preset": "classify",
+  "size": "quick",
+  "mix": "mmlu:256,clinc:96,quality:24",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "vllm",
+  "engine": "vllm",
+  "opts": {
+    "max_num_seqs": 512
+  },
+  "model": "Qwen/Qwen3-1.7B",
+  "model_revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+  "gpu": "NVIDIA H100 PCIe",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "0d19c51",
+  "git_commit_time": "2026-09-28T02:09:55+00:00",
+  "branch": null,
+  "timestamp": "2026-09-28T03:55:21+0000",
+  "load_s": 35.96,
+  "wall_s": 1.394,
+  "requests": 376,
+  "req_per_s": 269.79,
+  "input_tokens": 408002,
+  "unique_input_tokens": 58885,
+  "output_tokens": 562,
+  "input_tok_per_s": 292747.3,
+  "unique_input_tok_per_s": 42250.8,
+  "output_tok_per_s": 403.2,
+  "total_tok_per_s": 293150.6,
+  "ideal_prefix_reuse": 0.8557,
+  "gpu_util_mean": 39.9,
+  "mfu_pct": 19.2,
+  "mbu_pct": 5.8,
+  "utilisation": {
+    "model_tflop": 202.5,
+    "attention_flop_pct": 12.9,
+    "model_gb_moved": 161.9,
+    "forward_passes": 30,
+    "query_tokens": 62460,
+    "peak_bf16_tflops": 756.0,
+    "peak_hbm_gb_per_s": 2000.0,
+    "shape_layers": 28,
+    "shape_hidden": 2048,
+    "shape_q_dim": 2048,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 6144,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2
+  },
+  "gpu_mem_peak_mb": 75043.0,
+  "length_violations": 0,
+  "by_source": {
+    "quality": {
+      "n": 24,
+      "kind": "classify",
+      "mean_output_tokens": 1,
+      "accuracy": 0.2917
+    },
+    "mmlu": {
+      "n": 256,
+      "kind": "classify",
+      "mean_output_tokens": 1,
+      "accuracy": 0.6094
+    },
+    "clinc": {
+      "n": 96,
+      "kind": "classify",
+      "mean_output_tokens": 2.9,
+      "accuracy": 0.4271
+    }
+  },
+  "compare": {
+    "against": "results/classify-quick/Qwen3-1.7B/H100-PCIe/vllm/outputs.jsonl",
+    "classify": {
+      "n": 376,
+      "match": 1.0,
+      "identical": 1.0
+    }
+  },
+  "backend_stats": {
+    "trace": true
+  },
+  "target_s": 60,
+  "over_budget": false
+}
