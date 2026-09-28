@@ -7,6 +7,9 @@ supplies kernels only (FlashAttention and a handful of fused ops), no engine, sc
 On a 288-request mix of classification and generation (Qwen3-8B, H100), it takes 10.1 s against 8.8 s for vLLM with
 its prefix cache on and 156.1 s for naive padded HF batching.
 
+**[Browse all 360 benchmark runs](https://zhebrak.github.io/batchinfer/results/)**: five workloads, Qwen3-8B and 1.7B,
+H100 and A100, against vLLM and naive HF, each with its trace and charts.
+
 ## Quick start
 
 ```
