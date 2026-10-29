@@ -1,8 +1,8 @@
 """The naive baseline: an HF causal LM forward over fixed, left-padded batches with HF's DynamicCache, and a plain
 prefill + decode loop. By default in arrival order (order=input), which is what a first implementation does; each
 group decodes until its longest request finishes. It runs a Policy's fixed groups in order and never reorders,
-regroups or re-splits; it checks that each group fits the policy's budget and raises otherwise. It was this project's
-v0 and stays as the "before" row for every number.
+regroups or re-splits; it checks that each group fits the policy's budget and raises otherwise. It is the "before"
+row for every number.
 
 Known costs, recorded rather than fixed:
 - when any row in a group is padded, HF's SDPA path gets a materialised mask, drops the GQA fast

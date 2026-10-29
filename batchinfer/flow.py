@@ -1,9 +1,11 @@
 """One job through every stage, and the only place the stages are chained (records in schema.py):
 
-    list[Request] --analysis.analyze--> JobAnalysis --policy.decide(+ engine.hardware)--> Policy
-                  --engine.run--> Result per request
+    list[Request] --analysis.analyze--> JobAnalysis --engine.prepare--> (the executor built for this job)
+                  --policy.decide(+ engine.hardware)--> Policy --engine.run--> Result per request
 
-The CLI, both bench backends, scripts and tests call run(); none of them chains the stages by hand.
+Analysis needs only the tokenizer, so it runs before the engine finishes loading: an engine with prepare() sizes its
+pool and captures its graphs knowing the job (StepEngine.prepare), inside the load timer. The CLI, both bench
+backends, scripts and tests call run(); none of them chains the stages by hand.
 """
 from .analysis import analyze, describe
 from .policy import decide, describe_policy
@@ -16,10 +18,13 @@ def run(requests, tokenizer, engine, cfg, on_result, metrics, log=None):
     Metrics; run() fills its analysis and policy sections and timers, the engine the rest. log: called with the
     facts, then the decisions, as text. Returns (job, policy)."""
     with metrics.timer("analysis"):
-        job = analyze(requests, tokenizer)
+        job = analyze(requests, tokenizer, **({"block_size": engine.block_size} if hasattr(engine, "block_size") else {}))
     metrics.set_analysis(job.metrics)
     if log:
         log(describe(job))
+    if hasattr(engine, "prepare"):
+        with metrics.timer("load"):
+            engine.prepare(job)
     with metrics.timer("policy"):
         policy = decide(job, cfg, engine.hardware)
     metrics.set_policy(policy.to_dict())

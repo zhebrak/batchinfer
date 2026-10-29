@@ -15,7 +15,7 @@ Who owns what:
   per-step trace and the per-request trace by the engine that ran. Each timing key is written by whoever runs that
   phase: load and probe (the CLI), analysis and policy (flow.run), inference, prefill and decode (the engine).
 """
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from .prefix import PrefixTrie
 
@@ -25,15 +25,34 @@ ENGINES = ("batchinfer", "naive")
 ORDERS = ("input", "max_tokens_desc", "decode_ratio_desc", "prefix_dfs")
 NAIVE_ORDER = "input"  # the naive engine's default: arrival order, what a first implementation does
 ADMISSIONS = ("groups", "continuous")
+# How the batchinfer engine holds KV for a request (scheduler.py, rule 4). reserve: its whole life's blocks at
+# admission, never preempted. grow: the prompt's blocks at admission, a decode block as decode reaches it, and
+# admission against a projection of what every live request can hold at every future step (every max_tokens is
+# known up front), so the pool never runs dry and nothing is preempted either. preempt: grow's allocation under a
+# watermark, the youngest request preempted and recomputed when the pool runs dry anyway.
+MEMORY = ("reserve", "grow", "preempt")
+# How the batchinfer engine shares the KV of common prompt prefixes (scheduler.py, rule 3). none: every block is
+# private. block: whole blocks through the job's prefix trie, computed once and read by every request that has them.
+# token: block, and the leading tokens a request's own block shares with a sibling block already computed are copied
+# from it rather than recomputed (token-level sharing on whole-block pages, the way a radix tree shares prefixes).
+SHARING = ("none", "block", "token")
+# What happens to a shared block when its last user in a job finishes (scheduler.py, rule 3). job: released. radix:
+# kept, keyed by its prefix, for the next job the same engine runs (a long-running batch service, the bench's warm
+# row), evicted oldest first when a job needs the room: the cache half of a radix tree. One job alone gains nothing.
+CACHE = ("job", "radix")
 # Prefill budget bounds for "auto" and for explicit values.
-# 256: an A100 does 312 TFLOP/s against 1.55 TB/s of HBM, ~200 FLOP per byte. A bf16 GEMM over M tokens
-#      does about M FLOP per weight byte, so a step with fewer than ~200 prefill tokens stays bound by
-#      reading the weights; 256 is the next power of two. The H100 PCIe's ratio is ~380 (756 TFLOP/s, 2 TB/s),
-#      and the floor is still not per card: on mixed-quick, budgets of 256, 583 and 16384 all ran 28 s because
-#      the job is bound by its longest decode chain (measured 2026-09-27). A generate-heavy job that shows the
-#      floor matters would make it one.
+# 256: a bf16 GEMM over M tokens does about M FLOP per weight byte, so a step with fewer prefill tokens than the
+#      card's FLOP-per-byte ratio (its ridge: metrics.ridge_flop_per_byte, 200 to 300 on the cards listed there)
+#      stays bound by reading the weights; 256 is a power of two in that range. The floor is not per card: on
+#      mixed-quick, budgets of 256, 583 and 16384 all ran the same wall because the job is bound by its longest
+#      decode chain. The per-card number that matters is the measured one, metrics.ridge_tokens
+#      (scripts/ridge_calibration.py).
 # 16384: the prefill part of the executor's worst-step memory probe, so activation memory at this budget is checked.
 MIN_PREFILL_BUDGET, MAX_PREFILL_BUDGET = 256, 16384
+# The widest step the batchinfer engine builds, and what the executor's memory probe sizes for: MAX_SEQS sampled decode
+# rows (vLLM's default cap on running requests on 80 GB cards, so the comparison is like for like; the pool, not this
+# cap, bounds admission in practice) plus a MAX_PREFILL_BUDGET-token prefill chunk.
+MAX_SEQS = 1024
 # The fixed-groups budget when there is no card to measure (analyze, CPU runs). On a card, max_batch_tokens="auto"
 # is what the engine measured there (Hardware); it never falls back to this.
 DEFAULT_MAX_BATCH_TOKENS = 65536
@@ -83,7 +102,30 @@ class Hardware:
     gpu_name: str | None  # torch.cuda.get_device_name(); None off the GPU
     total_gb: float | None  # the card's memory, GiB; None off the GPU
     max_batch_tokens_fit: int | None  # naive engine: the padded-token budget NaiveEngine.fit() measured on this card
-    kv_pool_tokens: int | None  # batchinfer engine: its KV pool in token slots, (num_blocks - 1) x BLOCK_SIZE
+    kv_pool_tokens: int | None  # batchinfer engine: its KV pool in token slots, (num_blocks - 1) x block_size
+    kv_block_size: int | None = None  # batchinfer engine: tokens per KV block (Limits.block_size)
+    ridge_tokens: int | None = None  # batchinfer engine: the card's measured ridge (Limits.ridge_tokens), None uncalibrated
+
+
+@dataclass(frozen=True)
+class Limits:
+    """What the executor built, published once (Executor.build) for the scheduler: the pool (num_blocks counts the pad
+    block), its block size, the caps the probe sized the step for, the model's position limit, and the graphs it
+    captured: decode-only row counts and mixed-step prefill token sizes (empty without them). The scheduler reads
+    nothing else of the executor."""
+    num_blocks: int
+    block_size: int
+    max_seqs: int
+    max_prefill: int
+    max_positions: int | None
+    graph_rows: tuple = ()  # decode-only graph row sizes
+    graph_tokens: tuple = ()  # prefill token sizes of the mixed graphs (graphs.MIXED_TOKENS); empty without them
+    ridge_tokens: int | None = None  # the prefill tokens a graphed decode step carries at about no cost on this card
+    kv_dtype: str = "bf16"  # the KV pool's dtype: bf16 (the model's) or fp8
+    overlap: bool = False  # the engine plans and launches a step while the previous one runs (Scheduler, overlap)
+    attention: str = "fa"  # the executor's attention: fa, torch, or cascade (then the scheduler groups each step's rows)
+    pool: str = "static"  # static, elastic, or contiguous (then the scheduler hands each admitted sequence a slot)
+    blocks_per_group: int | None = None  # elastic: the blocks that share one mapping (kv.BlockAllocator counts live blocks by it)
 
 
 # config -> policy ------------------------------------------------------------------------------------
@@ -95,30 +137,34 @@ def _is_int(x):
 @dataclass(frozen=True)
 class PolicyConfig:
     """What the user asked for, for one engine. Only policy.decide reads it. The defaults are the batchinfer engine's;
-    a naive-engine config names admission="groups" and prefix_sharing=False (the CLI and NaiveBackend do)."""
+    a naive-engine config names admission="groups" and sharing="none" (the CLI and NaiveBackend do)."""
     engine: str = "batchinfer"  # the engine that will run the decisions; see validate() for what "naive" allows
     order: str = "prefix_dfs"
     admission: str = "continuous"
     chunk_prefill: bool = True  # batchinfer engine only
     # Batchinfer engine only: an int in [1, MAX_PREFILL_BUDGET], "auto" (policy.auto_prefill_budget, fixed for the job) or
-    # "adaptive" (starts at the auto value; the scheduler raises it when the decode work left shrinks, e.g. when a
-    # long-capped generation stops early; scheduler.py, rule 2). The default is MAX_PREFILL_BUDGET, the widest step the
-    # engine sizes for: with fused layers and CUDA graphs the step is GPU-bound, so fewer and larger prefill steps cost
-    # less, and the decode-only steps they leave replay a graph (99% of mixed-quick's steps against adaptive's 81%).
-    # Measured 2026-09-28 on mixed-quick, median of three runs, Qwen3-8B and 1.7B on the H100 and the A100: faster than
-    # adaptive on all four (8B H100 10.1 s against 10.7).
+    # "ridge" (each step with decode rows carries the card's ridge_tokens of prefill, what a graphed decode step
+    # absorbs at about no cost, measured per card by scripts/ridge_calibration.py and read from metrics.CARDS; a card
+    # without a measurement runs the default budget and warns; scheduler.ridge_budget). The
+    # default is MAX_PREFILL_BUDGET, the widest step the engine sizes for: with fused layers and CUDA graphs the step
+    # is GPU-bound, so fewer and larger prefill steps cost less, and the decode-only steps they leave replay a graph.
     prefill_budget: int | str = MAX_PREFILL_BUDGET
     # Fixed-groups partition (admission="groups"): an int, or "auto" for what the engine measured on its card
     # (policy.auto_max_batch_tokens), DEFAULT_MAX_BATCH_TOKENS when there is no card.
     max_batch_tokens: int | str = "auto"
     max_batch_size: int = DEFAULT_BATCH_SIZE
     # Batchinfer engine only: compute each shared prompt block once and read it from every request that has it
-    # (scheduler.py, rule 3). On by default with order=prefix_dfs: measured 2026-09-27 on mixed-quick, sharing took
-    # the timed pass from 42.6 to 27.7 s at the block-level reuse ceiling, and prefix_dfs holds no shared block for
-    # requests far down the order (pinned peak 1 block against ~1,200 under decode_ratio_desc, a wall-time tie
-    # otherwise). Any order is allowed with sharing; a shuffled one delays the long generations and can pin whole
-    # subtrees.
-    prefix_sharing: bool = True
+    # (scheduler.py, rule 3; SHARING). On by default with order=prefix_dfs: on mixed-quick sharing took the timed
+    # pass from 42.6 to 27.7 s at the block-level reuse ceiling, and prefix_dfs holds no shared block for requests
+    # far down the order (pinned peak 1 block against ~1,200 under decode_ratio_desc, a wall-time tie otherwise).
+    # Any order is allowed with sharing; a shuffled one delays the long generations and can pin whole subtrees.
+    sharing: str = "block"  # batchinfer engine only: one of SHARING
+    cache: str = "job"  # batchinfer engine only: one of CACHE
+    memory: str = "reserve"  # batchinfer engine only, continuous admission only: one of MEMORY
+    # memory=preempt: the steps of decode growth admission leaves room for (scheduler._watermark). At 32 a CPU
+    # replay of the capped dec50x32 row halved the preemptions and cut the recompute by a third (bench.suite's
+    # "capped preempt lookahead 32" arm measures it)
+    watermark_steps: int = 1
 
     def validate(self):
         """The one place a config an engine cannot run is refused, before anything loads."""
@@ -128,23 +174,39 @@ class PolicyConfig:
             raise ValueError(f"order must be one of {ORDERS}, not {self.order!r}")
         if self.admission not in ADMISSIONS:
             raise ValueError(f"admission must be one of {ADMISSIONS}, not {self.admission!r}")
-        for name in ("chunk_prefill", "prefix_sharing"):
-            if not isinstance(getattr(self, name), bool):  # bool('off') is True: never coerce, refuse
-                raise ValueError(f"{name} must be a bool, not {getattr(self, name)!r} (bench --opt takes true/false or on/off)")
+        if self.memory not in MEMORY:
+            raise ValueError(f"memory must be one of {MEMORY}, not {self.memory!r}")
+        if not isinstance(self.watermark_steps, int) or isinstance(self.watermark_steps, bool) or self.watermark_steps < 1:
+            raise ValueError(f"watermark_steps must be an int of at least 1, not {self.watermark_steps!r}")
+        if self.memory != "reserve" and self.admission != "continuous":
+            raise ValueError(f"memory={self.memory!r} grows a request's KV as it decodes, which fixed groups (admitted "
+                             f"whole with their lives' blocks) do not: it needs admission='continuous'")
+        if not isinstance(self.chunk_prefill, bool):  # bool('off') is True: never coerce, refuse
+            raise ValueError(f"chunk_prefill must be a bool, not {self.chunk_prefill!r} (bench --opt takes true/false or on/off)")
+        if self.sharing not in SHARING:
+            raise ValueError(f"sharing must be one of {SHARING}, not {self.sharing!r}")
+        if self.cache not in CACHE:
+            raise ValueError(f"cache must be one of {CACHE}, not {self.cache!r}")
+        if self.cache == "radix" and self.sharing == "none":
+            raise ValueError("cache='radix' keeps shared blocks for the next job: it needs sharing")
         if self.engine == "naive":
             if self.admission != "groups":
                 raise ValueError("the naive engine runs fixed groups only: admission must be 'groups'")
-            if self.prefix_sharing:
-                raise ValueError("the naive engine computes every prompt token: prefix_sharing needs the "
+            if self.cache != "job":
+                raise ValueError("the naive engine keeps no KV between jobs: cache needs the batchinfer engine")
+            if self.sharing != "none":
+                raise ValueError("the naive engine computes every prompt token: sharing needs the batchinfer engine")
+            if self.memory != "reserve":
+                raise ValueError("the naive engine holds a group's KV for the group's life: memory needs the "
                                  "batchinfer engine")
-            # "auto", "adaptive" and the default leave the budget to the engine, and this engine has none (decide
+            # "auto", "ridge" and the default leave the budget to the engine, and this engine has none (decide
             # records None); like chunk_prefill, only a setting that differs from the default is refused
-            if self.prefill_budget not in ("auto", "adaptive", MAX_PREFILL_BUDGET) or not self.chunk_prefill:
+            if self.prefill_budget not in ("auto", "ridge", MAX_PREFILL_BUDGET) or not self.chunk_prefill:
                 raise ValueError("the naive engine prefills each group in one forward: a fixed prefill_budget and "
                                  "chunk_prefill are batchinfer-engine settings")
-        if self.prefill_budget not in ("auto", "adaptive") and not (_is_int(self.prefill_budget)
-                                                                    and 1 <= self.prefill_budget <= MAX_PREFILL_BUDGET):
-            raise ValueError(f"prefill_budget must be 'auto', 'adaptive' or an int in [1, {MAX_PREFILL_BUDGET}], "
+        if self.prefill_budget not in ("auto", "ridge") and not (_is_int(self.prefill_budget)
+                                                                 and 1 <= self.prefill_budget <= MAX_PREFILL_BUDGET):
+            raise ValueError(f"prefill_budget must be 'auto', 'ridge' or an int in [1, {MAX_PREFILL_BUDGET}], "
                              f"not {self.prefill_budget!r}")
         if self.max_batch_tokens != "auto" and not (_is_int(self.max_batch_tokens) and self.max_batch_tokens >= 1):
             raise ValueError(f"max_batch_tokens must be 'auto' or a positive int, not {self.max_batch_tokens!r}")
@@ -160,7 +222,7 @@ class Group:
     """Requests that run together: every member is admitted at once and they are co-resident. The naive engine runs
     a group as one padded batch and computes every prompt token of every member; shared_prefix_len measures what
     it could have shared. The batchinfer engine admits a group whole and shares whole KV blocks through the job's prefix
-    trie, within and across groups, when the policy turns prefix_sharing on."""
+    trie, within and across groups, when the policy turns sharing on."""
     members: list[int]  # indices into JobAnalysis.requests
     shared_prefix_len: int  # longest common token prefix over members (0 for a single member)
 
@@ -178,10 +240,14 @@ class Policy:
     admission: str
     chunk_prefill: bool | None  # batchinfer engine only
     prefill_budget: int | None  # batchinfer engine only: maximum prefill tokens per step (decode rows ride on top), decided
-    #                             before the first step; the floor when prefill_budget_adaptive
+    #                             before the first step; under ridge, the cap of a step without decode rows
     prefill_budget_auto: bool | None  # batchinfer engine only: prefill_budget came from policy.auto_prefill_budget
-    prefill_budget_adaptive: bool | None  # batchinfer engine only: the scheduler recomputes the budget every step
-    prefix_sharing: bool | None  # batchinfer engine only
+    prefill_budget_ridge: bool | None  # batchinfer engine only: steps with decode rows are filled to ridge_tokens
+    ridge_tokens: int | None  # batchinfer engine only: the card's measured ridge, when prefill_budget_ridge
+    sharing: str | None  # batchinfer engine only: one of SHARING
+    cache: str | None  # batchinfer engine only: one of CACHE
+    memory: str | None  # batchinfer engine only: one of MEMORY
+    watermark_steps: int | None  # memory=preempt: steps of decode growth admission leaves room for
     max_batch_tokens: int | None  # fixed-groups footprint budget, rows x (longest prompt + longest max_tokens)
     max_batch_tokens_auto: bool | None  # max_batch_tokens came from policy.auto_max_batch_tokens (groups only)
     max_batch_size: int | None
@@ -191,8 +257,9 @@ class Policy:
         """What metrics.json records as its policy section: scalars, plus the head of the admission order."""
         return {"engine": self.engine, "order": self.order, "admission": self.admission,
                 "chunk_prefill": self.chunk_prefill, "prefill_budget": self.prefill_budget,
-                "prefill_budget_auto": self.prefill_budget_auto, "prefill_budget_adaptive": self.prefill_budget_adaptive,
-                "prefix_sharing": self.prefix_sharing,
+                "prefill_budget_auto": self.prefill_budget_auto, "prefill_budget_ridge": self.prefill_budget_ridge,
+                "ridge_tokens": self.ridge_tokens,
+                "sharing": self.sharing, "cache": self.cache, "memory": self.memory, "watermark_steps": self.watermark_steps,
                 "max_batch_tokens": self.max_batch_tokens, "max_batch_tokens_auto": self.max_batch_tokens_auto,
                 "max_batch_size": self.max_batch_size,
                 "groups": len(self.groups) if self.groups is not None else None,
@@ -210,6 +277,10 @@ class Row:
     block_ids: list[int]  # the sequence's physical KV blocks: shared trie blocks first, then its own
     sample: bool  # the slice ends at the sequence's last known token, so its next token is sampled
     decode: bool  # a decode row (prompt fully computed, feeds its last sampled id), else a prefill chunk
+    # overlap: the row's one token is the previous step's sampled id at this slot of its output, still on the device
+    # when the row is planned (token_ids holds a placeholder); None when token_ids is the token
+    prev: int | None = None
+    slot: int = 0  # pool=contiguous: the row's region (its sequence's for its admitted life); 0 is the pad slot
 
 
 @dataclass
@@ -217,6 +288,13 @@ class Step:
     """One forward: what the scheduler hands the executor. The executor returns one sampled id per sampling row,
     in row order, and the scheduler's commit() applies them."""
     rows: list[Row]  # decode rows first, then prefill chunks in admission order
+    # sharing=token: (source block, destination block, k) KV copies the executor runs before the forward: the first
+    # k slots of a computed block, into a block a row of this step then continues from position k
+    copies: list = field(default_factory=list)
+    # attention=cascade: the rows grouped by shared computed prefix (cascade.Group), every row in exactly one
+    groups: list = field(default_factory=list)
+    # pool=contiguous: slots this step's admissions took (their regions hold a finished sequence's mappings to drop)
+    slot_resets: list = field(default_factory=list)
 
     def counts(self):
         """(decode rows, prefill tokens, prefill rows)."""

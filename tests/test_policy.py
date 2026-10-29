@@ -5,7 +5,7 @@ import pytest
 
 from batchinfer.analysis import analyze, lcp
 from batchinfer.io import read_requests
-from batchinfer.kv import BLOCK_SIZE, reservation_blocks
+from batchinfer.kv import DEFAULT_BLOCK_SIZE as BLOCK_SIZE, reservation_blocks
 from batchinfer.policy import (DEAD_SLOT_RATIO, auto_prefill_budget, decide, describe_policy, fixed_groups, ordered,
                                padded_tokens)
 from batchinfer.schema import (DEFAULT_BATCH_SIZE, DEFAULT_MAX_BATCH_TOKENS, MAX_PREFILL_BUDGET, MIN_PREFILL_BUDGET,
@@ -31,7 +31,7 @@ def groups_policy(job, order="max_tokens_desc", max_batch_tokens=DEFAULT_MAX_BAT
                   max_batch_size=DEFAULT_BATCH_SIZE, engine="naive"):
     """A fixed-groups decision; by default the one the naive engine runs, which shares nothing."""
     return decide(job, PolicyConfig(engine=engine, order=order, admission="groups", max_batch_tokens=max_batch_tokens,
-                                    max_batch_size=max_batch_size, prefix_sharing=engine == "batchinfer"))
+                                    max_batch_size=max_batch_size, sharing="block" if engine == "batchinfer" else "none"))
 
 
 # order -----------------------------------------------------------------------------------------------
@@ -158,7 +158,7 @@ def test_auto_budget_spreads_prefill_over_the_decode_chain_within_clamps():
     assert auto_prefill_budget(mixed) == 583
 
 
-def test_decide_resolves_the_config():
+def test_decide_resolves_the_config(capsys):
     job = job_of(many())
     p = decide(job, PolicyConfig(order="decode_ratio_desc", admission="continuous", chunk_prefill=True,
                                  prefill_budget=512))
@@ -166,23 +166,27 @@ def test_decide_resolves_the_config():
     assert p.groups is None and p.stats == {}
     assert p.prefill_budget == 512 and not p.prefill_budget_auto
     assert p.chunk_prefill is True and p.admission == "continuous"
-    assert p.prefix_sharing is True  # the default; off must be asked for
-    assert decide(job, PolicyConfig(prefix_sharing=False)).prefix_sharing is False
+    assert p.sharing == "block"  # the default; none must be asked for
+    assert decide(job, PolicyConfig(sharing="none")).sharing == "none"
     assert p.max_batch_tokens is None and p.max_batch_size is None  # the fixed-groups budget plays no part
     auto = decide(job, PolicyConfig(prefill_budget="auto"))
     assert auto.order == "prefix_dfs" and auto.prefill_budget == auto_prefill_budget(job.metrics)
-    assert auto.prefill_budget_auto and auto.prefill_budget_adaptive is False and p.prefill_budget_adaptive is False
+    assert auto.prefill_budget_auto and auto.prefill_budget_ridge is False and p.prefill_budget_ridge is False
     assert "(auto)" in describe_policy(auto, job)
     default = decide(job, PolicyConfig())  # the widest step the engine sizes for, held for the whole job
     assert default.prefill_budget == MAX_PREFILL_BUDGET and not default.prefill_budget_auto
-    assert default.prefill_budget_adaptive is False and default.to_dict()["prefill_budget_adaptive"] is False
-    adaptive = decide(job, PolicyConfig(prefill_budget="adaptive"))  # the auto value, as the floor it raises from
-    assert adaptive.prefill_budget == auto.prefill_budget and adaptive.prefill_budget_auto
-    assert adaptive.prefill_budget_adaptive and "(adaptive:" in describe_policy(adaptive, job)
-    shared = decide(job, PolicyConfig(order="prefix_dfs", prefix_sharing=True))
-    assert shared.prefix_sharing is True and shared.admission_order == tuple(ordered(job, "prefix_dfs"))
+    assert default.prefill_budget_ridge is False and default.to_dict()["prefill_budget_ridge"] is False
+    hw = Hardware(gpu_name=None, total_gb=None, max_batch_tokens_fit=None, kv_pool_tokens=None, ridge_tokens=300)
+    ridge = decide(job, PolicyConfig(prefill_budget="ridge"), hw)  # the card's ridge fills steps; the default caps
+    assert ridge.prefill_budget == MAX_PREFILL_BUDGET and not ridge.prefill_budget_auto
+    assert ridge.prefill_budget_ridge and ridge.ridge_tokens == 300 and "(ridge: " in describe_policy(ridge, job)
+    cold = decide(job, PolicyConfig(prefill_budget="ridge"))  # no card, or one not calibrated: the default budget
+    assert cold.prefill_budget == MAX_PREFILL_BUDGET and cold.prefill_budget_ridge is False and cold.ridge_tokens is None
+    assert "ridge_calibration" in capsys.readouterr().err  # and the user is told to measure it
+    shared = decide(job, PolicyConfig(order="prefix_dfs", sharing="block"))
+    assert shared.sharing == "block" and shared.admission_order == tuple(ordered(job, "prefix_dfs"))
     text = describe_policy(shared, job)
-    assert "order=prefix_dfs" in text and "prefix_sharing=True" in text and f"prefill_budget={MAX_PREFILL_BUDGET}," in text
+    assert "order=prefix_dfs" in text and "sharing=block" in text and f"prefill_budget={MAX_PREFILL_BUDGET}," in text
     assert "fixed groups" not in text
 
 
@@ -200,9 +204,9 @@ def test_groups_admission_uses_the_fixed_groups():
 def test_a_policy_holds_only_what_its_engine_applies():
     job = job_of(many())
     naive = groups_policy(job, "max_tokens_desc", max_batch_tokens=120, max_batch_size=6)
-    assert naive.engine == "naive" and naive.prefix_sharing is None
+    assert naive.engine == "naive" and naive.sharing is None
     assert naive.chunk_prefill is None and naive.prefill_budget is None and naive.prefill_budget_auto is None
-    assert naive.prefill_budget_adaptive is None
+    assert naive.prefill_budget_ridge is None
     assert {"padded_groups", "groups_padded_prompt_tokens", "groups_padding_waste_pct"} <= set(naive.stats)
     ours = groups_policy(job, "max_tokens_desc", max_batch_tokens=120, max_batch_size=6, engine="batchinfer")
     assert ours.groups == naive.groups and ours.admission_order == naive.admission_order  # the same partition
@@ -212,7 +216,7 @@ def test_a_policy_holds_only_what_its_engine_applies():
 
 @pytest.mark.parametrize("cfg", [PolicyConfig(prefill_budget=MAX_PREFILL_BUDGET + 1), PolicyConfig(prefill_budget=0),
                                  PolicyConfig(admission="lazy"), PolicyConfig(order="random"),
-                                 PolicyConfig(prefix_sharing="off"), PolicyConfig(chunk_prefill="true"),  # bool('off') is True
+                                 PolicyConfig(sharing="off"), PolicyConfig(chunk_prefill="true"),  # bool('true') is True
                                  PolicyConfig(max_batch_tokens="Auto"), PolicyConfig(max_batch_tokens="65536"),
                                  PolicyConfig(max_batch_tokens=0), PolicyConfig(max_batch_size=0),
                                  PolicyConfig(engine="gpu"), PolicyConfig(prefill_budget=True),  # True is an int
@@ -223,27 +227,28 @@ def test_decide_rejects_bad_config(cfg):
 
 
 @pytest.mark.parametrize("kw,match", [({"admission": "continuous"}, "fixed groups only"),
-                                      ({"prefix_sharing": True}, "prefix_sharing needs the batchinfer engine"),
+                                      ({"sharing": "block"}, "sharing needs the batchinfer engine"),
+                                      ({"sharing": "block", "cache": "radix"}, "cache needs the batchinfer engine"),
                                       ({"prefill_budget": 512}, "batchinfer-engine settings"),
                                       ({"chunk_prefill": False}, "batchinfer-engine settings")])
 def test_naive_engine_configs_it_cannot_run_are_refused(kw, match):
     cfg = PolicyConfig(**{"engine": "naive", "order": "max_tokens_desc", "admission": "groups",
-                          "prefix_sharing": False, **kw})
+                          "sharing": "none", **kw})
     with pytest.raises(ValueError, match=match):
         cfg.validate()
 
 
-@pytest.mark.parametrize("budget", ["adaptive", "auto", MAX_PREFILL_BUDGET])  # the modes and the default: left to the engine
+@pytest.mark.parametrize("budget", ["ridge", "auto", MAX_PREFILL_BUDGET])  # the modes and the default: left to the engine
 def test_naive_engine_takes_a_budget_mode_it_has_nothing_to_apply_to(budget):
     job = job_of(many())
-    cfg = PolicyConfig(engine="naive", order="max_tokens_desc", admission="groups", prefix_sharing=False,
+    cfg = PolicyConfig(engine="naive", order="max_tokens_desc", admission="groups", sharing="none",
                        prefill_budget=budget)
     policy = decide(job, cfg)
-    assert policy.prefill_budget is None and policy.prefill_budget_adaptive is None and policy.prefill_budget_auto is None
+    assert policy.prefill_budget is None and policy.prefill_budget_ridge is None and policy.prefill_budget_auto is None
 
 
 A100 = {"gpu_name": "NVIDIA A100-SXM4-40GB", "total_gb": 39.39}
-NAIVE_GROUPS = {"engine": "naive", "order": "max_tokens_desc", "admission": "groups", "prefix_sharing": False}
+NAIVE_GROUPS = {"engine": "naive", "order": "max_tokens_desc", "admission": "groups", "sharing": "none"}
 
 
 def test_auto_budget_is_what_the_engine_measured():
@@ -254,7 +259,7 @@ def test_auto_budget_is_what_the_engine_measured():
     assert static.stats["max_batch_tokens_from"] == "measured fit on NVIDIA A100-SXM4-40GB"
     assert "77,824 tokens x 64 rows (tokens auto: measured fit on NVIDIA A100-SXM4-40GB)" in describe_policy(static, job)
     assert static.to_dict()["max_batch_tokens_auto"] is True
-    pool = Hardware(**A100, max_batch_tokens_fit=None, kv_pool_tokens=144_176)
+    pool = Hardware(**A100, max_batch_tokens_fit=None, kv_pool_tokens=144_176, kv_block_size=BLOCK_SIZE)
     step = decide(job, PolicyConfig(admission="groups", max_batch_size=8), pool)
     assert step.max_batch_tokens == 144_176 - 8 * (BLOCK_SIZE - 1) and step.max_batch_tokens_auto is True
     explicit = decide(job, PolicyConfig(**NAIVE_GROUPS, max_batch_tokens=500), fit)
@@ -271,7 +276,7 @@ def test_auto_budget_refuses_an_unmeasured_card_and_a_pool_too_small_for_its_row
     job = job_of(many(4))
     with pytest.raises(ValueError, match="nothing measured"):  # an unverified budget never reaches a group
         decide(job, PolicyConfig(**NAIVE_GROUPS), Hardware(**A100, max_batch_tokens_fit=None, kv_pool_tokens=None))
-    tiny = Hardware(gpu_name=None, total_gb=None, max_batch_tokens_fit=None, kv_pool_tokens=39 * BLOCK_SIZE)
+    tiny = Hardware(gpu_name=None, total_gb=None, max_batch_tokens_fit=None, kv_pool_tokens=39 * BLOCK_SIZE, kv_block_size=BLOCK_SIZE)
     with pytest.raises(ValueError, match="lower max_batch_size"):
         decide(job, PolicyConfig(admission="groups", max_batch_size=64), tiny)
 
@@ -280,12 +285,12 @@ def test_step_auto_groups_fit_the_pool():
     """A row reserves whole blocks, up to 14 tokens past its share of the padded footprint: the batchinfer engine's auto
     budget leaves that per row, so every group it forms fits the pool whole."""
     job, pool = job_of(many(200)), 400
-    p = decide(job, PolicyConfig(admission="groups", max_batch_size=8, prefix_sharing=False),
+    p = decide(job, PolicyConfig(admission="groups", max_batch_size=8, sharing="none"),
                Hardware(gpu_name=None, total_gb=None, max_batch_tokens_fit=None, kv_pool_tokens=pool))
     items = job.requests
     assert len(p.groups) > 10 and p.stats["oversized"] == 0
     for g in p.groups:
-        assert sum(reservation_blocks(items[i].prompt_len, items[i].req.max_tokens) for i in g.members) * BLOCK_SIZE <= pool
+        assert sum(reservation_blocks(items[i].prompt_len, items[i].req.max_tokens, BLOCK_SIZE) for i in g.members) * BLOCK_SIZE <= pool
 
 
 def test_engine_defaults_have_one_source():
@@ -300,10 +305,12 @@ def test_engine_defaults_have_one_source():
     from batchinfer.schema import NAIVE_ORDER
     params = inspect.signature(BatchinferBackend._policy_config).parameters
     assert params["order"].default == PolicyConfig.order == "prefix_dfs"
-    assert params["prefix_sharing"].default is PolicyConfig.prefix_sharing is True
+    assert params["sharing"].default == PolicyConfig.sharing == "block"
     assert params["prefill_budget"].default == PolicyConfig.prefill_budget == MAX_PREFILL_BUDGET
     assert params["max_batch_tokens"].default == PolicyConfig.max_batch_tokens == "auto"
-    assert inspect.signature(BatchinferBackend.__init__).parameters["reserve_gb"].default == "auto"  # sized on the card
+    # the executor's build options have one source too, Executor.__init__: the adapter passes only what it was given
+    assert "reserve_gb" in BatchinferBackend.load_opts
+    assert [p.kind for p in inspect.signature(BatchinferBackend.__init__).parameters.values()][-1] is inspect.Parameter.VAR_KEYWORD
     assert inspect.signature(NaiveBackend._policy_config).parameters["order"].default == NAIVE_ORDER == "input"
     parser = argparse.ArgumentParser()
     cli.common(parser)
@@ -311,8 +318,7 @@ def test_engine_defaults_have_one_source():
     assert unset.model == "Qwen/Qwen3-1.7B"
     assert cli.resolve_defaults(argparse.Namespace(**vars(unset))).engine == PolicyConfig.engine == "batchinfer"
     ours = cli.resolve_defaults(argparse.Namespace(**{**vars(unset), "engine": "batchinfer"}))
-    assert (ours.order, ours.admission, ours.prefix_sharing) == (PolicyConfig.order, PolicyConfig.admission,
-                                                                PolicyConfig.prefix_sharing)
+    assert (ours.order, ours.admission, ours.sharing) == (PolicyConfig.order, PolicyConfig.admission, PolicyConfig.sharing)
     assert ours.max_batch_tokens == PolicyConfig.max_batch_tokens  # "auto": what the engine measures on its card
     naive = cli.resolve_defaults(argparse.Namespace(**{**vars(unset), "engine": "naive"}))
-    assert (naive.order, naive.admission, naive.prefix_sharing) == ("input", "groups", False)
+    assert (naive.order, naive.admission, naive.sharing) == ("input", "groups", "none")

@@ -4,6 +4,9 @@ import os
 
 # Before torch initialises CUDA, so the CLI and the bench row run the same allocator.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+# layers=compiled: Inductor's kernels persist beside the model cache, so a load after the first is warm
+os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", os.path.join(
+    os.environ.get("HF_HOME") or os.path.join(os.path.expanduser("~"), ".cache", "huggingface"), "batchinfer-inductor"))
 
 import torch  # noqa: E402
 

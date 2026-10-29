@@ -1,7 +1,9 @@
 {#- One page shape for a run and for the index: a link back to the index (index, on a run's page), title,
     subtitle, warnings, tables, a note, links.
-    A table is {caption, header, rows: [{head, cells, group}], fmt} plus, on the index, id, filters and numeric (per
-    cell column, whether it holds numbers: its blanks align right); caption may be none. header is none or
+    A table is {caption, header, rows: [{head, cells, group}], fmt} plus, on the index, id, filters, numeric (per
+    cell column, whether it holds numbers: its blanks align right) and collapsed (drawn closed under its caption, a
+    click opens it); caption may be none. tables_summary, on a run's page, folds every table into one dropdown
+    under that line, so the page opens on its subtitle and charts. header is none or
     [{text, help, filter}], plus numeric on the index, which right-aligns the name; head is none or {text, href, help, sub, sort}: a linked head shows
     text as the link, with help as its tooltip and sub in small type under it, and sorts by sort. An unlinked head's
     help is bench/glossary.py's line: a name with one is underlined dotted and shows it as a tooltip, in a header
@@ -18,6 +20,9 @@
     Markup stays XHTML-parseable (self-closed tags, no entities beyond what autoescape emits) so tests can parse it. -#}
 {% macro cell(v, use_fmt, sortable, numeric) %}{% if v is cell %}<td class="{{ 'n' if v.sort is number else 't' }}" data-sort="{{ v.sort }}"{% if v.title %} title="{{ v.title }}"{% endif %}>{% if v.href %}<a href="{{ v.href }}">{{ v.text }}</a>{% else %}{{ v.text }}{% endif %}{% if v.mark %} <span class="badge mark">{{ v.mark }}</span>{% endif %}</td>{% elif v is chips %}<td{% if not v %} class="blank"{% endif %}>{% for c in v %}<span class="badge chip">{{ c }}</span> {% else %}-{% endfor %}</td>{% else %}<td{% if v is number and v is not boolean %} class="n"{% if sortable %} data-sort="{{ v }}"{% endif %}{% elif v is none %} class="{{ 'n ' if numeric }}blank"{% if sortable %} data-sort=""{% endif %}{% endif %}>{{ v|fmt if use_fmt and v is float else v|show }}</td>{% endif %}{% endmacro %}
 {% macro table(t) %}
+{% if t.get("collapsed") %}
+<details class="w-100 mb-3"><summary class="fw-semibold">{{ t.caption }}</summary>
+{% endif %}
 {% if t.get("filters") %}
 <form class="filters w-100 d-flex flex-wrap align-items-end gap-2 mb-1" data-table="{{ t.id }}">
 {% for f in t.filters %}
@@ -29,7 +34,7 @@
 {% endif %}
 <div class="table-responsive mw-100">
 <table{% if t.get("id") %} id="{{ t.id }}"{% endif %} class="table table-sm table-hover caption-top{% if not t.get("filters") %} table-striped{% endif %}{% if t.header %} sortable n-last{% endif %}">
-{% if t.caption %}
+{% if t.caption and not t.get("collapsed") %}
 <caption>{{ t.caption }}</caption>
 {% endif %}
 {% if t.header %}
@@ -42,6 +47,9 @@
 </tbody>
 </table>
 </div>
+{% if t.get("collapsed") %}
+</details>
+{% endif %}
 {% endmacro %}
 <!DOCTYPE html>
 <html lang="en">
@@ -61,6 +69,7 @@
 <style>
 :root { color-scheme: light dark }
 body { padding: 1rem 1.5rem }
+details { min-width: 0 }  /* a flex item: without it an open table widens it past the page */
 h1 { font-size: 1.75rem; margin-bottom: .25rem }
 h1 + p { color: var(--bs-secondary-color); max-width: 72em }
 .back { font-size: .875rem; margin-bottom: .25rem }
@@ -117,11 +126,18 @@ span.term { cursor: help }
 {% for w in warnings %}
 <p class="alert alert-warning py-2"><strong>Warning:</strong> {{ w }}</p>
 {% endfor %}
+{% set fold = tables_summary is defined and tables_summary %}
+{% if fold %}
+<details class="mb-3"><summary class="fw-semibold">{{ tables_summary }}</summary>
+{% endif %}
 <div class="d-flex flex-wrap align-items-start column-gap-5">
 {% for t in tables %}
 {{ table(t) }}
 {% endfor %}
 </div>
+{% if fold %}
+</details>
+{% endif %}
 {% if charts %}
 <section class="charts" aria-label="Charts">
 {% for c in charts %}
@@ -133,9 +149,6 @@ span.term { cursor: help }
 </section>
 <script type="application/json" id="chart-data">{{ chart_data|tojson }}</script>
 {% endif %}
-{% for n in chart_notes %}
-<p class="small text-body-secondary">{{ n }}</p>
-{% endfor %}
 {% if note %}
 <p class="note">{{ note }}</p>
 {% endif %}

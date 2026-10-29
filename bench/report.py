@@ -1,15 +1,16 @@
 """One table of benchmark runs, in the terminal and as an HTML index, and a page per run.
 
     python -m bench.report results/                    # every metrics.json below results/
-    python -m bench.report results/mixed-quick/Qwen3-8B/H100-PCIe/
+    python -m bench.report results/mixed-quick/Qwen3-14B/H100-80GB-HBM3/
     python -m bench.report --html results/             # also report.html beside each metrics.json, results/index.html
     python -m bench.report --serve 8765 results/       # --html, then serve results/ on http://127.0.0.1:8765/
 
-A row says what launched, one column per knob (engine, prefix reuse, order, prefill budget; any other --opt values
-are on its page and in its directory name, the engine's tooltip), then the few numbers that tell its tradeoffs: how fast (wall s, × vLLM), how right (accuracy %) and why (prefix
-hit %, steps, ms/step, decode batch), how much of the card it used (GPU util %, MFU %, MBU %), and last the commit
-it ran. A column blank in every row is left out and named under the table. Rows of one job (workload, model, GPU)
-share a band. A run's page adds the engine's other telling counters, the counts behind MFU and MBU, accuracy by
+The index opens with the arms matrix (bench.tables.arms), closed until clicked: every arm of the suite on every
+workload, wall s and × its like-for-like vLLM row. Its run table has one row per run: what launched, one column per knob (engine, arm, prefix
+reuse, order, prefill budget; any other --opt values are on its page and in its directory name, the engine's
+tooltip), then how fast (wall s, × vLLM), how right (accuracy %), why (prefix hit %, steps, ms/step, decode batch)
+and how much of the card it used (GPU util %, MFU %, MBU %). A column blank in every row is left out and named under
+the table. Rows of one job (workload, model, GPU) share a band. A run's page adds the engine's other telling counters, the counts behind MFU and MBU, accuracy by
 source, the match against its reference and the charts of its record; metrics.json and details.json, linked from
 it, hold everything else. bench/glossary.py holds the hover text of every underlined name.
 
@@ -34,7 +35,7 @@ from markupsafe import Markup, escape  # jinja2's own dependency
 from bench.charts import charts, engine_of, to_columns
 from bench.glossary import ENGINE, GLOSSARY
 from bench.results import gpu_slug, model_name
-from bench.workload import SUITE_PRESETS
+from bench.workload import workload_rank as _workload_rank
 
 META_NOISE = ("model", "input", "output", "timestamp", "torch", "transformers", "alloc_conf", "args")
 ARGS_NOISE = ("cmd", "input", "output", "metrics", "model")  # the index's config cell leaves these out
@@ -213,8 +214,8 @@ def pct(share):
 
 
 def bench_context(m, details=None, reference=None, vs=None, index=None):
-    """A bench.run row's page: titled by its job, subtitled by the knobs it launched with; what it launched, its
-    outcome, the engine counters that explain it, accuracy by source and the match against its reference, then the
+    """A bench.run row's page: titled by its job, subtitled by every key setting; folded under one line that gives its
+    wall s, × vLLM and accuracy, its whole configuration, its outcome, the engine counters that explain it, accuracy by source and the match against its reference, then the
     charts of its record (details.json). reference is the same job's like-for-like vLLM row, drawn under this run's
     tokens-per-step chart (vllm_reference); vs is its × vLLM (vs_cell); index links back to the index."""
     warnings = []
@@ -229,11 +230,9 @@ def bench_context(m, details=None, reference=None, vs=None, index=None):
                  for name, s in m["by_source"].items()}
     matched = {kind: {k: pct(v) if k in ("match", "identical") else v for k, v in row.items()}
                for kind, row in compare.items() if kind != "against"}
-    tables = [facts("Launch", [("prefix reuse", "prefix_reuse", prefix_reuse(m)), ("order", "order", order(m)),
-                               ("prefill budget", "prefill_budget", budget_cell(m)), ("layers", "layers", layers(m)),
-                               ("graphs", "graphs", graphs(m)), ("max seqs", "max_num_seqs", max_seqs(m)),
-                               ("other opts", "other_opts", other_opts(m)), ("requests", "requests", m.get("requests")),
-                               ("commit", "commit", commit_cell(m)), ("ran", "ran", ran_cell(m))]),
+    config = facts("Configuration", [*configuration(m, details), ("requests", "requests", m.get("requests")),
+                                     ("commit", "commit", commit_cell(m)), ("ran", "ran", ran_cell(m))])
+    tables = [config,
               facts("Outcome", [("wall s", "wall_s", m["wall_s"]), ("× vLLM", "vs_vllm", vs),
                                 ("accuracy %", "accuracy_pct", accuracy_pct(m)),
                                 ("out tok/s", "output_tok_per_s", m.get("output_tok_per_s")),
@@ -246,12 +245,16 @@ def bench_context(m, details=None, reference=None, vs=None, index=None):
     title = " · ".join(t for t in (engine(m), Path(m["workload"]).stem, model_name(m["model"]),
                                    gpu_slug(m["gpu"]) if m.get("gpu") else None) if t)
     record = chart_context(details, reference) if details else NO_CHARTS
-    return {"title": title, "subtitle": launch_line(m), "index": index, "warnings": warnings,
+    acc = accuracy_pct(m)
+    outcome = [f"{m['wall_s']:.2f} s", vs and f"{vs.text}× vLLM", acc is not None and f"accuracy {acc}%"]
+    folded = "Configuration, outcome and engine counters: " + ", ".join(p for p in outcome if p)
+    return {"title": title, "subtitle": launch_line(m, details), "tables_summary": folded, "index": index,
+            "warnings": warnings,
             "tables": [t for t in tables if t], "note": trace_note(details, "details.json") if details else None,
             **record}
 
 
-NO_CHARTS = {"charts": [], "chart_data": None, "chart_notes": []}
+NO_CHARTS = {"charts": [], "chart_data": None}
 TRACES = ("meta", "groups", "steps", "request_trace")  # drawn or tabled on their own, never as a key/value table
 
 
@@ -264,13 +267,12 @@ def trace_note(m, source):
 
 def chart_context(m, reference=None):
     """The page's charts (bench/charts.py): the cards to lay out and, once, the specs and the data they draw."""
-    drawn, datasets, notes = charts(m, reference)
+    drawn, datasets = charts(m, reference)
     if not drawn:
-        return dict(NO_CHARTS, chart_notes=notes)
+        return NO_CHARTS
     return {"charts": [{k: c[k] for k in ("id", "title", "description", "wide")} for c in drawn],
             "chart_data": {"datasets": {name: to_columns(rows) for name, rows in datasets.items()},
-                           "specs": {c["id"]: {"light": c["light"], "dark": c["dark"]} for c in drawn}},
-            "chart_notes": notes}
+                           "specs": {c["id"]: {"light": c["light"], "dark": c["dark"]} for c in drawn}}}
 
 
 def engine_context(m, source="metrics.json", reference=None):
@@ -299,11 +301,11 @@ def render(m, name, files, details=None, reference=None, vs=None, index=None):
 def vllm_reference(path, m, details):
     """The same job's like-for-like vLLM row for a batchinfer bench.run row at path (its metrics.json), as
     {"record": its details.json, "prefix_cache": on or off}: the row beside this one labelled vllm when the run
-    shared prefixes, vllm-enable_prefix_caching=False when it did not (README "Results"), and only when it ran the
+    shared prefixes, vllm-enable_prefix_caching=False when it did not, and only when it ran the
     same workload file, model and GPU and its trace has steps. Else None."""
     if "by_source" not in m or not details or engine_of(details) != "batchinfer":
         return None
-    prefix_cache = bool((details.get("policy") or {}).get("prefix_sharing"))
+    prefix_cache = ((details.get("policy") or {}).get("sharing") or "none") != "none"
     ref = path.parent.parent / ("vllm" if prefix_cache else "vllm-enable_prefix_caching=False")
     try:
         ref_m = json.loads((ref / "metrics.json").read_text())
@@ -339,20 +341,12 @@ def engine_rows(runs, link):
 
 # What a row launched ---------------------------------------------------------------------------------------
 
-# The backend classes before the engine rename, whose rows record no engine: the same two engines.
-LEGACY_ENGINES = {"stepbackend": "batchinfer", "enginebackend": "naive"}
-LAUNCH_OPTS = ("prefix_sharing", "enable_prefix_caching", "order", "prefill_budget", "fused_layers", "cuda_graphs",
-               "fa_version", "enforce_eager", "max_num_seqs")  # --opt values with a column
 ENGINE_RANK = {"naive": 0, "vllm": 1, "batchinfer": 2}  # baselines first
 
 
 def engine(m):
-    """The engine a row ran, by its registry name: bench.run records it; rows written before it did get their
-    backend's class name, the pre-rename ones mapped to the engine's current name."""
-    if m.get("engine"):
-        return m["engine"]
-    name = m["backend"].rsplit(":", 1)[-1].rsplit(".", 1)[-1].lower()
-    return LEGACY_ENGINES.get(name, name)
+    """The engine a row ran, by its registry name."""
+    return m["engine"]
 
 
 def stat(m, key):
@@ -379,16 +373,17 @@ def with_details(m, details):
 
 
 def prefix_reuse(m):
-    """How the run reused the KV of shared prompt prefixes: 'global trie' (batchinfer's prefix_sharing),
-    'prefix cache' (vLLM's enable_prefix_caching, on unless turned off) or 'off'; the naive engine never reuses."""
+    """How the run reused the KV of shared prompt prefixes: 'global trie' (batchinfer's sharing=block), 'token
+    trie' (sharing=token), 'prefix cache' (vLLM's enable_prefix_caching, on unless turned off) or 'off'; the naive
+    engine never reuses."""
     name = engine(m)
     if name == "vllm":
         return "prefix cache" if m["opts"].get("enable_prefix_caching", True) else "off"
-    sharing = stat(m, "prefix_sharing")
-    sharing = m["opts"].get("prefix_sharing") if sharing is None else sharing
+    sharing = stat(m, "sharing")
+    sharing = m["opts"].get("sharing") if sharing is None else sharing
     if sharing is None:
         return "off" if name == "naive" else None
-    return "global trie" if sharing else "off"
+    return {"none": "off", "block": "global trie", "token": "token trie"}.get(sharing, sharing)
 
 
 def order(m):
@@ -397,42 +392,37 @@ def order(m):
 
 
 def budget_cell(m):
-    """batchinfer's prefill budget: the tokens a step may prefill ('583', which auto chose), or 'adaptive from 583'
-    when the scheduler could raise it from there; sorts by the tokens."""
+    """batchinfer's prefill budget: the tokens a step may prefill ('583', which auto chose), or 'ridge 256' when
+    steps with decode rows were filled to the card's ridge; sorts by the tokens."""
     budget = stat(m, "prefill_budget")
     if budget is None:
         return None
-    adaptive = stat(m, "prefill_budget_adaptive") or m["opts"].get("prefill_budget") == "adaptive"  # older rows: opts
-    return Cell(f"adaptive from {show(budget)}" if adaptive else show(budget), sort=budget)
+    ridge = stat(m, "ridge_tokens") if stat(m, "prefill_budget_ridge") else None
+    return Cell(f"ridge {show(ridge)}" if ridge else show(budget), sort=ridge or budget)
 
 
 def layers(m):
-    """The forward a row ran. batchinfer: 'fused' (its Qwen3 layers on vLLM's fused kernels) or 'HF' (HF's layer
-    modules), with ' · FA3' for FlashAttention-3; rows recorded before the engine said so fall back to their --opt
-    values, and to HF (the only forward then). vLLM: 'compiled' (torch.compile) or 'eager' (enforce_eager). naive: HF."""
+    """The forward a row ran. batchinfer: 'fused' (its Qwen3 layers on vLLM's fused kernels), 'compiled' (HF's layers
+    under torch.compile) or 'HF' (HF's layer modules, eagerly), with ' · FA3' for FlashAttention-3. vLLM: 'compiled'
+    (torch.compile) or 'eager' (enforce_eager). naive: HF."""
     name = engine(m)
     if name == "vllm":
         return "eager" if m["opts"].get("enforce_eager") else "compiled"
     if name != "batchinfer":
         return "HF" if name == "naive" else None
-    fused = stat(m, "fused_layers")
-    fused = m["opts"].get("fused_layers") is True if fused is None else fused
-    fa3 = (stat(m, "fa_version") or m["opts"].get("fa_version")) == 3
-    return ("fused" if fused else "HF") + (" · FA3" if fa3 else "")
+    fa3 = stat(m, "fa_version") == 3
+    return {"fused": "fused", "compiled": "compiled"}.get(stat(m, "layers"), "HF") + (" · FA3" if fa3 else "")
 
 
 def graphs(m):
-    """CUDA graphs. batchinfer: 'decode 81%' (the share of steps replayed from a graph: its decode-only steps) or
-    'off', falling back to --opt values for older rows. vLLM: 'on' (full and piecewise) unless enforce_eager. naive:
-    off."""
+    """CUDA graphs. batchinfer: 'decode 81%' (the share of steps replayed from a graph) or 'off'. vLLM: 'on' (full
+    and piecewise) unless enforce_eager. naive: off."""
     name = engine(m)
     if name == "vllm":
         return "off" if m["opts"].get("enforce_eager") else "on"
     if name != "batchinfer":
         return "off" if name == "naive" else None
-    on = stat(m, "cuda_graphs")
-    on = m["opts"].get("cuda_graphs") is True if on is None else on
-    if not on:
+    if not stat(m, "cuda_graphs"):
         return "off"
     pct = stat(m, "graph_step_pct")
     return f"decode {pct:.0f}%" if pct is not None else "decode"
@@ -443,23 +433,89 @@ def max_seqs(m):
     return m["opts"].get("max_num_seqs") if engine(m) == "vllm" else None
 
 
-def other_opts(m):
-    """The --opt values without a column of their own, as k=v badges."""
-    return Chips(f"{k}={plain(v)}" for k, v in m["opts"].items() if k not in LAUNCH_OPTS)
+def launch_line(m, details=None):
+    """A run page's subtitle: its arm and every key setting in one line, defaults included, so the page says what ran
+    without a click and the same job's pages tell apart at a glance: 'preempt lookahead 32: global trie · order
+    prefix_dfs · memory preempt, watermark 32 · prefill budget 16,384 · 283,552 KV tokens · bf16 · fused layers, FA3 ·
+    graphs decode 99% · overlap off'. Settings that rarely move (cache, admission, chunking, block size, pool,
+    attention) are named only away from their default; configuration() lists them all."""
+    c = {label: v for label, _, v in configuration(m, details)}
+    name, reuse = engine(m), c["prefix reuse"]
+
+    def dtypes():
+        if c.get("weights") is None:
+            return None
+        return "bf16" if c["weights"] == c["KV dtype"] == "bf16" else f"{c['weights']} weights, {c['KV dtype']} KV"
+    parts = ["prefix reuse off" if reuse == "off" else reuse]
+    if name == "batchinfer":
+        kind, _, fa = (c.get("layers") or "").partition(" · ")
+        parts += [c.get("cross-job cache") == "radix" and "radix cache", c.get("order") and f"order {c['order']}",
+                  c.get("admission") == "groups" and "fixed groups",
+                  c.get("memory") and f"memory {c['memory']}" + (f", watermark {c['watermark steps']}"
+                                                                  if c.get("watermark steps") else ""),
+                  c.get("prefill budget") and f"prefill budget {show(c['prefill budget'])}",
+                  c.get("chunked prefill") == "off" and "no chunking",
+                  c.get("KV tokens") and f"{show(c['KV tokens'])} KV tokens",
+                  c.get("block size") not in (None, 16) and f"{c['block size']}-token blocks",
+                  c.get("KV pool") not in (None, "static") and f"{c['KV pool']} pool", dtypes(),
+                  c.get("attention") not in (None, "fa") and f"{c['attention']} attention",
+                  kind and f"{kind} layers" + (f", {fa}" if fa else ""), c.get("graphs") and f"graphs {show(c['graphs'])}",
+                  c.get("overlap") and f"overlap {c['overlap']}"]
+    elif name == "vllm":
+        cap = c.get("KV cap GiB")
+        parts += [c.get("KV tokens") and f"{show(c['KV tokens'])} KV tokens" + (f", capped at {show(cap)} GiB" if cap else ""),
+                  dtypes(), "eager (no compile, no graphs)" if m["opts"].get("enforce_eager") else "compiled, graphs",
+                  c.get("max seqs") and f"max_num_seqs {c['max seqs']}"]
+    else:
+        parts += [c.get("order") and f"order {c['order']}",
+                  c.get("prefill budget") and f"prefill budget {show(c['prefill budget'])}"]
+    line = " · ".join(p for p in [*parts, *(c.get("other opts") or ())] if p)
+    arm = c.get("arm")
+    return f"{'defaults' if arm == name else arm}: {line}" if arm else line or None
 
 
-def launch_line(m):
-    """What a row launched with, as a run page's subtitle, so the same job's pages tell apart at a glance: 'global
-    trie · order prefix_dfs · prefill budget adaptive from 583', 'prefix cache', 'prefix reuse off · order input'."""
-    reuse, budget = prefix_reuse(m), budget_cell(m)
-    build = {"batchinfer": f"{layers(m)} layers", "vllm": "eager (no compile, no graphs)"
-             if m["opts"].get("enforce_eager") else None}.get(engine(m))
-    graphed = show(graphs(m)) if engine(m) == "batchinfer" and graphs(m) != "off" else None
-    seqs = max_seqs(m)
-    parts = ["prefix reuse off" if reuse == "off" else reuse, order(m) and f"order {order(m)}",
-             budget and f"prefill budget {budget.text}", build, graphed and f"graphs {graphed}",
-             seqs and f"max_num_seqs {seqs}", *other_opts(m)]
-    return " · ".join(p for p in parts if p) or None
+# The --opt keys the configuration table shows a row of its own for; any other is listed as it was given
+SHOWN_OPTS = {"sharing", "cache", "order", "admission", "memory", "watermark_steps", "prefill_budget", "chunk_prefill",
+              "pool", "num_blocks", "block_size", "quant", "kv_dtype", "attention", "layers", "cuda_graphs",
+              "fa_version", "overlap", "enable_prefix_caching", "enforce_eager", "max_num_seqs", "quantization",
+              "kv_cache_dtype", "kv_cache_memory_bytes"}
+
+
+def on_off(value):
+    return None if value is None else "on" if value else "off"
+
+
+def configuration(m, details):
+    """(label, glossary key, value) for everything a row ran with, defaults included, so its page reads on its own:
+    the arm, then batchinfer's policy and executor as the engine recorded them (details.json), or vLLM's launch
+    options, or the naive engine's order and budget. None values are left out by facts()."""
+    name, opts = engine(m), m["opts"]
+    kv_tokens = ("KV tokens", "kv_capacity_tokens", num(stat(m, "kv_capacity_tokens"), 0))
+    items = [("arm", "arm", arm_name(m)), ("prefix reuse", "prefix_reuse", prefix_reuse(m))]
+    if name == "batchinfer":
+        policy, ex = (details or {}).get("policy") or {}, (details or {}).get("executor") or {}
+        dtype = lambda key: ("fp8" if ex[key] == "fp8" else "bf16") if key in ex else None  # noqa: E731
+        watermark = policy.get("watermark_steps") if policy.get("memory") == "preempt" else None
+        items += [("cross-job cache", "cache", policy.get("cache")), ("order", "order", order(m)),
+                  ("admission", "admission", policy.get("admission")), ("memory", "memory", policy.get("memory")),
+                  ("watermark steps", "watermark_steps", watermark), ("prefill budget", "prefill_budget", budget_cell(m)),
+                  ("chunked prefill", "chunk_prefill", on_off(policy.get("chunk_prefill"))), kv_tokens,
+                  ("block size", "block_size", ((details or {}).get("volume") or {}).get("kv_block_size")),
+                  ("KV pool", "pool", ex.get("pool")), ("weights", "quant", dtype("quant")),
+                  ("KV dtype", "kv_dtype", dtype("kv_dtype")),
+                  ("attention", "attention", ex.get("attention")), ("layers", "layers", layers(m)),
+                  ("graphs", "graphs", graphs(m)), ("overlap", "overlap", on_off(ex.get("overlap")))]
+    elif name == "vllm":
+        cap = opts.get("kv_cache_memory_bytes")
+        items += [kv_tokens, ("KV cap GiB", "kv_cache_memory_bytes", cap and num(cap / 2**30, 1)),
+                  ("weights", "quantization", opts.get("quantization") or "bf16"),
+                  ("KV dtype", "kv_cache_dtype", opts.get("kv_cache_dtype") or "bf16"),
+                  ("layers", "layers", layers(m)), ("graphs", "graphs", graphs(m)),
+                  ("max seqs", "max_num_seqs", max_seqs(m))]
+    else:
+        items += [("order", "order", order(m)), ("prefill budget", "prefill_budget", budget_cell(m))]
+    other = Chips(f"{k}={plain(v)}" for k, v in opts.items() if k not in SHOWN_OPTS)
+    return items + [("other opts", "other_opts", other)]
 
 
 # The numbers that tell a row's tradeoffs ---------------------------------------------------------------------
@@ -470,7 +526,7 @@ def same_job(m):
 
 def vllm_walls(runs):
     """{job: wall s} of each job's vLLM row with its defaults (prefix cache on): what × vLLM divides by."""
-    return {same_job(m): m["wall_s"] for m in runs if engine(m) == "vllm" and not m["opts"]}
+    return {same_job(m): m["wall_s"] for m in runs if engine(m) == "vllm" and not m["opts"] and not m.get("warm")}
 
 
 def num(value, digits):
@@ -479,13 +535,39 @@ def num(value, digits):
     return None if value is None else Cell(f"{value:,.{digits}f}", sort=value)
 
 
-def vs_cell(m, walls, href=None):
-    """× vLLM at two decimals, its tooltip naming the vLLM wall s it divides by; href links that vLLM row's page."""
-    ref = walls.get(same_job(m))
+def vs_cell(m, walls, href=None, ref_column="vLLM cache on"):
+    """× vLLM at two decimals, its tooltip naming the vLLM wall s it divides by; href links that vLLM row's page.
+    walls: vllm_walls' {job: wall s}, or arm_walls' {(job, column): wall s} read at ref_column."""
+    ref = walls.get((same_job(m), ref_column)) if ref_column != "vLLM cache on" or (same_job(m), ref_column) in walls \
+        else walls.get(same_job(m))
     if not ref:
         return None
-    return Cell(f"{m['wall_s'] / ref:.2f}", sort=round(m["wall_s"] / ref, 2), href=href,
-                title=f"wall s ÷ {ref:,.2f} s, vLLM with its prefix cache on")
+    what = "vLLM with its prefix cache on" if ref_column == "vLLM cache on" else ref_column
+    return Cell(f"{m['wall_s'] / ref:.2f}", sort=round(m["wall_s"] / ref, 2), href=href, title=f"wall s ÷ {ref:,.2f} s, {what}")
+
+
+def arm_reference(m):
+    """The vLLM column a row is read against: its arm's (bench.tables.reference_of); a vLLM row against vLLM with
+    its cache on, its warm row None; vLLM with its cache on for a row run outside the suite."""
+    from bench.suite import ARMS  # here, not at the top: bench.suite and bench.tables import this module
+    from bench.tables import reference_of
+    if engine(m) == "vllm":  # vLLM's own rows against its defaults, the cache-on row at 1.00; a warm row timed half
+        return None if m.get("warm") else "vLLM cache on"  # the requests, so it has no ratio to a full cold pass
+    arm = next((a for a in ARMS if a.column == m.get("column")), None)
+    return "vLLM cache on" if arm is None else reference_of(arm)
+
+
+def arm_name(m):
+    """The row's arm, None for a row run outside the suite."""
+    return m.get("column") or None
+
+
+def arm_walls(runs):
+    """{(job, column): wall s} of the vLLM rows, by the arm column each recorded, and {job: wall s} of the cache-on
+    rows for those that recorded none."""
+    out = {(same_job(m), m["column"]): m["wall_s"] for m in runs if engine(m) == "vllm" and m.get("column")}
+    out.update(vllm_walls(runs))
+    return out
 
 
 def wall_cell(m):
@@ -560,10 +642,15 @@ def index_columns(runs):
     """(title, glossary key, filter, value) per column: what launched, the engine first (it heads the row and links
     its page), then the numbers that tell its tradeoffs: how fast (wall s, × vLLM), how right (accuracy %), why
     (prefix hit %, steps, ms/step, decode batch) and how much of the card it used (GPU util %, MFU %, MBU %), each at
-    a fixed count of decimals; the commit, provenance rather than a knob, comes last."""
-    walls = vllm_walls(runs)
+    a fixed count of decimals. Each run's commit is on its page."""
+    walls = arm_walls(runs)
+
+    def vs(m):
+        ref = arm_reference(m)
+        return None if ref is None else vs_cell(m, walls, ref_column=ref)
     return [
         ("engine", "engine", True, engine),
+        ("arm", "arm", True, arm_name),
         ("workload", "workload", True, lambda m: Path(m["workload"]).stem),
         ("model", "model", True, lambda m: model_name(m["model"])),
         ("GPU", "GPU", True, lambda m: gpu_slug(m["gpu"]) if m.get("gpu") else None),
@@ -574,16 +661,16 @@ def index_columns(runs):
         ("graphs", "graphs", True, graphs),
         ("max seqs", "max_num_seqs", True, max_seqs),
         ("wall s", "wall_s", False, wall_cell),
-        ("× vLLM", "vs_vllm", False, lambda m: vs_cell(m, walls)),
+        ("× vLLM", "vs_vllm", False, vs),
         ("accuracy %", "accuracy_pct", False, lambda m: num(accuracy_pct(m), 1)),
         ("prefix hit %", "prefix_hit_pct", False, prefix_hit_cell),
         ("steps", "steps", False, lambda m: stat(m, "steps")),
         ("ms/step", "ms_per_step", False, lambda m: num(ms_per_step(m), 1)),
         ("decode batch", "mean_decode_batch", False, lambda m: num(stat(m, "mean_decode_batch"), 1)),
+        ("KV tokens", "kv_capacity_tokens", False, lambda m: num(stat(m, "kv_capacity_tokens"), 0)),
         ("GPU util %", "gpu_util_mean", False, lambda m: num(m.get("gpu_util_mean"), 1)),
         ("MFU %", "mfu_pct", False, lambda m: num(m.get("mfu_pct"), 1)),
         ("MBU %", "mbu_pct", False, lambda m: num(m.get("mbu_pct"), 1)),
-        ("commit", "commit", True, commit_cell),
     ]
 
 
@@ -596,8 +683,7 @@ def filled(spec, values):
 
 
 def workload_rank(m):
-    preset = m.get("preset")
-    return (SUITE_PRESETS.index(preset) if preset in SUITE_PRESETS else len(SUITE_PRESETS)), Path(m["workload"]).stem
+    return _workload_rank(Path(m["workload"]).stem, m.get("size") or "quick")
 
 
 def row_key(m):
@@ -610,7 +696,7 @@ def row_key(m):
 
 
 def options(cells):
-    """A filter's choices: each distinct cell text once, newest first for time-keyed cells (commit), else sorted."""
+    """A filter's choices: each distinct cell text once, newest first for time-keyed cells, else sorted."""
     if any(isinstance(c, Cell) for c in cells):
         keyed = {show(c): c.sort if isinstance(c, Cell) else "" for c in cells}
         return sorted(keyed, key=lambda t: keyed[t] or "", reverse=True)
@@ -653,8 +739,33 @@ def index_subtitle(bench, cli):
     return " ".join(sentences)
 
 
+def matrix_cell(cell):
+    """An arms-matrix cell: wall s, and × its vLLM reference in brackets; sorts by wall s."""
+    if cell is None:
+        return None
+    w, r = cell
+    return Cell(f"{w:.1f}" if r is None else f"{w:.1f} ({r:.2f}x)", sort=w)
+
+
+def arms_tables(bench):
+    """The arms matrix of each model and GPU among the rows (bench.tables.arms)."""
+    from bench.tables import arms, by_job, short  # here, not at the top: bench.tables imports this module
+    out = []
+    for (model, gpu), rows_by_workload in by_job(bench.values()).items():
+        stems, rows = arms(rows_by_workload)
+        if not rows:
+            continue
+        opts = lambda a: ", ".join([*(f"{k}={v}" for k, v in a.opts.items()), *([f"cap={a.cap}"] if a.cap else [])])  # noqa: E731
+        out.append({"caption": f"Every arm on every workload, {model} on {gpu}: wall s (× its vLLM reference)",
+                    "fmt": False, "numeric": [True] * len(stems), "collapsed": True,
+                    "header": [col("arm"), *(dict(col(short(s), "workload"), numeric=True) for s in stems)],
+                    "rows": [{"head": head(a.column, help=opts(a) or None), "cells": [matrix_cell(c) for c in cells]}
+                             for a, cells in rows]})
+    return out
+
+
 def index_page(root, runs):
-    """One row per bench.run run, then one per engine run, each linking to its report.html."""
+    """The arms matrix, then one row per bench.run run and one per engine run, each linking to its report.html."""
     def href(p):
         return quote(f"{p.parent.relative_to(root).as_posix()}/report.html", safe="/=")
 
@@ -671,7 +782,7 @@ def index_page(root, runs):
     tables, note = [], None
     if bench_runs:
         bench, note = bench_table(bench_runs, link)
-        tables.append(bench)
+        tables += [*arms_tables(bench_runs), bench]
     if cli_runs:
         tables.append({"caption": "Engine runs (python -m batchinfer run)", "fmt": False,
                        "header": [col("run", "run_dir"), col("model"), col("config", "engine_config"), col("requests"),
@@ -727,7 +838,8 @@ def write_html(root):
         runs[p] = with_details(m, details), details
     bench = {p: m for p, (m, _) in runs.items() if "by_source" in m}
     walls = vllm_walls(bench.values())
-    vllm_pages = {same_job(m): p.parent for p, m in bench.items() if engine(m) == "vllm" and not m["opts"]}
+    vllm_pages = {same_job(m): p.parent for p, m in bench.items()
+                  if engine(m) == "vllm" and not m["opts"] and not m.get("warm")}
     for p, (m, details) in runs.items():
         files = [p.name, *[s for s in SIBLINGS if p.with_name(s).exists()]]
         ref = vllm_pages.get(same_job(m)) if p in bench else None

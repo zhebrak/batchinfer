@@ -11,7 +11,7 @@ if not torch.cuda.is_available():
 
 from batchinfer.naive import NaiveEngine  # noqa: E402
 from batchinfer.executor import Executor  # noqa: E402
-from batchinfer.kv import BLOCK_SIZE  # noqa: E402
+from batchinfer.kv import DEFAULT_BLOCK_SIZE as BLOCK_SIZE  # noqa: E402
 from batchinfer.sizing import BUDGET_STEP, MAX_PEAK_SHARE, MIN_POOL_BLOCKS  # noqa: E402
 from batchinfer.step_engine import StepEngine  # noqa: E402
 
@@ -51,7 +51,7 @@ def test_naive_fit_is_measured_and_verified():
 
 
 def test_step_pool_is_sized_to_the_card():
-    ex = Executor(MODEL, seed=3)  # reserve_gb="auto": measure the largest step, then size the pool
+    ex = Executor(MODEL, seed=3, layers="hf", cuda_graphs=False)  # reserve_gb="auto": measure, then size
     try:
         total = torch.cuda.mem_get_info()[1] / GiB
         facts = ex.memory_facts
@@ -66,15 +66,15 @@ def test_step_pool_is_sized_to_the_card():
         free_all()
 
 
-@pytest.mark.parametrize("fused_layers", [False, True])
-def test_step_pool_holds_the_graphs(fused_layers):
+@pytest.mark.parametrize("layers", ["hf", "fused"])
+def test_step_pool_holds_the_graphs(layers):
     """With cuda_graphs the sizing measures the largest graph's private pool and leaves room for it: the verify probe,
     run with every graph captured and alive, still lands within the limit."""
-    ex = Executor(MODEL, seed=3, fused_layers=fused_layers, cuda_graphs=True)
+    ex = Executor(MODEL, seed=3, layers=layers, cuda_graphs=True)
     try:
         total = torch.cuda.mem_get_info()[1] / GiB
         facts = ex.memory_facts
-        assert 0 < facts["graph_held_gb"] <= facts["graph_sized_gb"] + 0.1 and facts["graph_capture_s"] > 0 and len(ex.graphs) == len(ex.graph_sizes)
+        assert 0 < facts["graph_held_gb"] <= facts["graph_sized_gb"] + 0.1 and facts["graph_capture_s"] > 0 and len(ex.graphs) == len(ex.graph_keys)
         assert MAX_PEAK_SHARE * total - 1 < facts["probe_peak_device_gb"] <= MAX_PEAK_SHARE * total + 0.1
     finally:
         del ex

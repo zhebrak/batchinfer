@@ -164,12 +164,13 @@ def engine_name(backend):
     return getattr(cls, "name", None) or cls.__name__.lower()
 
 
-def row_label(backend, opts):
-    """A row's directory name: its engine, then every option it ran with, in the order given. Run from a branch
-    ($BENCH_BRANCH) it ends in @<branch>, so it lands beside main's row, never on top of it; vLLM's rows never do, as
-    they do not run the branch's engine code and --compare vllm reads them by the plain label."""
+def row_label(backend, opts, warm=False):
+    """A row's directory name: its engine, then every option it ran with, in the order given, then -warm for a row
+    timed after an untimed pass over the same workload. Run from a branch ($BENCH_BRANCH) it ends in @<branch>, so
+    it lands beside main's row, never on top of it; vLLM's rows never do, as they do not run the branch's engine
+    code and --compare vllm reads them by the plain label."""
     engine, branch = engine_name(backend), os.environ.get("BENCH_BRANCH")
-    label = engine + "".join(f"-{k}={v}" for k, v in opts.items())
+    label = engine + "".join(f"-{k}={v}" for k, v in opts.items()) + ("-warm" if warm else "")
     return label + "@" + branch.replace("/", "-") if branch and engine != "vllm" else label
 
 
@@ -179,11 +180,14 @@ def gpu_device():
 
 
 class GpuSampler:
-    """Samples GPU utilisation and memory every 200 ms via nvidia-smi; no-op where it is missing."""
+    """Samples GPU utilisation, memory, SM clock, temperature and throttle reasons every 200 ms via nvidia-smi;
+    no-op where it is missing. throttled is the share of samples with an active throttle reason other than idle
+    (bit 0 of clocks_throttle_reasons.active), so a row says whether the card ran at speed."""
+    QUERY = "utilization.gpu,memory.used,clocks.sm,temperature.gpu,clocks_throttle_reasons.active"
 
     def __enter__(self):
         try:
-            self.proc = subprocess.Popen(["nvidia-smi", "-i", gpu_device(), "--query-gpu=utilization.gpu,memory.used",
+            self.proc = subprocess.Popen(["nvidia-smi", "-i", gpu_device(), f"--query-gpu={self.QUERY}",
                                           "--format=csv,noheader,nounits", "-lms", "200"],
                                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         except FileNotFoundError:
@@ -191,13 +195,31 @@ class GpuSampler:
         return self
 
     def __exit__(self, *exc):
-        self.util = self.mem = None
+        self.util = self.mem = self.clock = self.temp = self.throttled = None
         if self.proc:
             self.proc.terminate()
-            rows = [line.split(",") for line in self.proc.communicate()[0].splitlines() if "," in line]
-            if rows:
-                self.util = round(mean(float(u) for u, _ in rows), 1)
-                self.mem = max(float(m) for _, m in rows)
+            self.util, self.mem, self.clock, self.temp, self.throttled = summarise_samples(self.proc.communicate()[0])
+
+
+def summarise_samples(text):
+    """(mean util %, peak memory MiB, mean SM clock MHz, peak temperature C, throttled %) from nvidia-smi's csv lines
+    in GpuSampler.QUERY order; None for a field no line gives (an older nvidia-smi prints [N/A])."""
+    rows = [[c.strip() for c in line.split(",")] for line in text.splitlines() if line.count(",") >= 4]
+    if not rows:
+        return None, None, None, None, None
+    clocks, temps = [float(r[2]) for r in rows if number(r[2])], [float(r[3]) for r in rows if number(r[3])]
+    reasons = [int(r[4], 16) for r in rows if r[4].startswith("0x")]
+    return (round(mean(float(r[0]) for r in rows), 1), max(float(r[1]) for r in rows),
+            round(mean(clocks)) if clocks else None, max(temps) if temps else None,
+            round(100 * sum(1 for x in reasons if x & ~1) / len(reasons), 1) if reasons else None)
+
+
+def number(text):
+    try:
+        float(text)
+        return True
+    except ValueError:
+        return False
 
 
 def shell(*cmd):
@@ -270,21 +292,28 @@ def load(backend, model, opts=None, warmup=True):
     return engine, time.perf_counter() - t0
 
 
-def run(workload, backend="dummy", model=None, opts=None, out=None, compare_to=None, warmup=True):
+def run(workload, backend="dummy", model=None, opts=None, out=None, compare_to=None, warmup=True, warm=False):
     """One row in one process: prepare, load, one timed pass."""
     job = prepare(workload, model, compare_to, gpu_name())
     engine, load_s = load(backend, job.model, opts, warmup)
-    return timed_pass(engine, job, backend, opts or {}, load_s, out)
+    return timed_pass(engine, job, backend, opts or {}, load_s, out, warm=warm)
 
 
-def timed_pass(engine, job, backend, opts, load_s, out=None):
+def timed_pass(engine, job, backend, opts, load_s, out=None, column=None, warm=False):
     """One timed generate() over the whole workload, then every check and file of the row: outputs.jsonl,
     metrics.json, details.json, report.html. opts: every option the row ran with (load and policy), which name its
-    directory. The backend's reset() runs first, outside the timer."""
+    directory. The backend's reset() runs first, outside the timer. warm: the workload's even-numbered requests run
+    untimed between the reset and the timed pass, with no reset in between, and the timed pass runs the odd-numbered
+    ones (half the requests, sharing their sources' prefixes with the warm half but none of their own prompts), so it
+    finds every prefix the engine keeps across jobs already computed (vLLM's prefix cache; batchinfer's cache=radix):
+    what a long-running service sees. A warm row's like-for-like is the other engine's warm row, never a cold one."""
     workload, requests, meta, model, gpu = job.workload, job.requests, job.meta, job.model, job.gpu
     workload_sha256, compare_to, other = job.workload_sha256, job.reference, job.other
     if hasattr(engine, "reset"):
         engine.reset()
+    if warm:
+        engine.generate([{k: r[k] for k in CLIENT_FIELDS} for r in requests[0::2]])
+        requests = requests[1::2]
     client = [{k: r[k] for k in CLIENT_FIELDS} for r in requests]
     with GpuSampler() as sampler:
         t0 = time.perf_counter()
@@ -310,11 +339,11 @@ def timed_pass(engine, job, backend, opts, load_s, out=None):
 
     st = meta.get("stats", {})
     input_tokens = sum(r["prompt_tokens"] for r in requests)
-    unique_tokens = st.get("unique_prompt_tokens")
+    unique_tokens = None if warm else st.get("unique_prompt_tokens")  # the sidecar counts the whole workload
     output_tokens = sum(res["output_tokens"] for res in results)
     target_s = meta.get("target_s")
     details = engine.details() if hasattr(engine, "details") else None  # everything the backend recorded
-    mfu, mbu, used = utilisation(load_shape(model), details, gpu, wall_s)
+    mfu, mbu, used = utilisation(load_shape(model), details, gpu, wall_s, opts)
     sidecar = meta_path(workload)  # its stop_token_ids and stats shape --compare and the report
     branch = os.environ.get("BENCH_BRANCH") or None
     metrics = {
@@ -322,7 +351,8 @@ def timed_pass(engine, job, backend, opts, load_s, out=None):
         "workload_meta_sha256": hashlib.sha256(sidecar.read_bytes()).hexdigest() if sidecar.exists() else None,
         "preset": meta.get("preset"), "size": meta.get("size"), "mix": meta.get("mix"), "seed": meta.get("seed"),
         "lengths": meta.get("lengths"),
-        "backend": backend, "engine": engine_name(backend), "opts": opts, "model": model,
+        "backend": backend, "engine": engine_name(backend), "opts": opts, "column": column, "warm": warm,
+        "model": model,
         "model_revision": model_revision(model),
         "gpu": gpu, "versions": versions(),
         # GIT_SHA overrides for a tree without its .git
@@ -339,7 +369,8 @@ def timed_pass(engine, job, backend, opts, load_s, out=None):
         "total_tok_per_s": round((input_tokens + output_tokens) / wall_s, 1),
         "ideal_prefix_reuse": st.get("ideal_prefix_reuse"),
         "gpu_util_mean": sampler.util, "mfu_pct": mfu, "mbu_pct": mbu, "utilisation": used,
-        "gpu_mem_peak_mb": sampler.mem,
+        "gpu_mem_peak_mb": sampler.mem, "gpu_clock_mhz_mean": sampler.clock, "gpu_temp_c_max": sampler.temp,
+        "gpu_throttled_pct": sampler.throttled,
         "length_violations": violations, "by_source": by_source,
         "compare": None, "backend_stats": engine.stats() if hasattr(engine, "stats") else None,
         "target_s": target_s, "over_budget": bool(target_s and wall_s > target_s),
@@ -347,7 +378,7 @@ def timed_pass(engine, job, backend, opts, load_s, out=None):
     if compare_to:
         metrics["compare"] = {"against": job.against or str(compare_to), **compare(requests, by_id, other, stop)}
 
-    label = row_label(backend, opts)
+    label = row_label(backend, opts, warm)
     out = Path(out or run_dir(workload, model, gpu, label, ROOT))
     out.mkdir(parents=True, exist_ok=True)
     # metrics.json marks a whole row, so it goes first and comes back last: a failure in between (details that do
@@ -390,9 +421,13 @@ def main(argv=None):
                    help="outputs.jsonl of an earlier run of the same workload file, model and GPU, or that run's "
                         "label (e.g. vllm) to take it from this GPU's rows under $BENCH_REFERENCE_ROOT or results/")
     p.add_argument("--no-warmup", action="store_true")
+    p.add_argument("--warm", action="store_true",
+                   help="run the even-numbered requests untimed first and time the odd-numbered ones, with no reset "
+                        "between: a warm cache (vLLM's prefix cache, batchinfer's cache=radix) over prompts not seen "
+                        "before; the row's label ends in -warm, and it compares against the other engine's warm row")
     args = p.parse_args(argv)
     opts = {k: parse_value(v) for k, v in (o.split("=", 1) for o in args.opt)}
-    metrics = run(args.workload, args.backend, args.model, opts, args.out, args.compare, not args.no_warmup)
+    metrics = run(args.workload, args.backend, args.model, opts, args.out, args.compare, not args.no_warmup, args.warm)
     return 1 if metrics["length_violations"] else 0  # every file is written first, so the row can be inspected
 
 

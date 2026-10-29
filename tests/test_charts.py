@@ -7,7 +7,7 @@ from batchinfer.analysis import analyze
 from batchinfer.metrics import Metrics
 from batchinfer.policy import decide
 from batchinfer.schema import PolicyConfig, Request
-from bench.charts import PALETTES, charts, log_ticks
+from bench.charts import PALETTES, charts, log_ticks, timeline_rows
 
 STEP_IDS = ["tokens_per_step", "in_flight", "kv", "step_time", "timeline", "prompt_len", "output_len", "decode_ratio",
             "prompt_hist", "hit_hist", "output_hist"]
@@ -30,7 +30,7 @@ def step_record():
         m.record_step(decode_rows=d, prefill_tokens=p, prefill_rows=1 if p else 0, admitted=2, free_blocks=6,
                       step_ms=end / 2, gpu_ms=None, sched_ms=0.1, trie_blocks=1, pinned_blocks=0,
                       step_prefill_budget=8, kv_reserved_tokens=64, kv_written_tokens=8 * (k + 1),
-                      unprefilled_tokens=0, end_ms=end, graph_rows=0)
+                      unprefilled_tokens=0, end_ms=end, graph_rows=0, graph_tokens=0, mapped_groups=None)
     for idx, (kind, prompt, start, first, hits) in enumerate([("generate", 8, 0, 0, 0), ("label", 12, 1, 1, 8)]):
         m.record_request(idx=idx, id=f"r{idx}", analysis_kind=kind, group=None, prompt_len=prompt, max_tokens=3,
                          output_tokens=3 - idx, prefix_hit_tokens=hits, finish_reason="length" if idx == 0 else "stop",
@@ -50,8 +50,8 @@ def data_names(spec):
 
 
 def test_step_record_draws_every_chart_on_the_jobs_clock():
-    drawn, data, notes = charts(step_record())
-    assert [c["id"] for c in drawn] == STEP_IDS and notes == []
+    drawn, data = charts(step_record())
+    assert [c["id"] for c in drawn] == STEP_IDS
     steps, requests = data["steps"], data["requests"]
     assert len(steps) == 3 and len(requests) == 2
     # seconds since the job started: the engine's end_ms shifted by analysis + policy
@@ -70,17 +70,31 @@ def test_step_record_draws_every_chart_on_the_jobs_clock():
 
 def test_prompt_length_is_plotted_where_prefill_started_not_at_admission():
     """Every request reserved its KV at step 0; the chart must still spread them by when their prefill ran."""
-    drawn, data, _ = charts(step_record())
+    drawn, data = charts(step_record())
     spec = by_id(drawn)["prompt_len"]["light"]
     assert spec["encoding"]["x"]["field"] == "prefill_start_s"
     assert sorted({r["prefill_start_s"] for r in data["requests"]}) == [0.75, 0.76]
     assert by_id(drawn)["decode_ratio"]["light"]["encoding"]["x"]["field"] == "prefill_start_s"
-    phases = [(t["rank"], t["phase"]) for t in data["timeline"]]
-    assert (1, "KV reserved, waiting") in phases and (0, "KV reserved, waiting") not in phases
+    assert {"prefill", "decode", "KV reserved, waiting"} <= {t["phase"] for t in data["timeline"]}
+
+
+def test_the_timeline_stacks_the_phases_from_prefill_up():
+    """At every moment: prefilling at the bottom, then decoding, then KV reserved while waiting, then not yet admitted
+    (from the first admission on); a band that does not move is one row, however many steps it spans."""
+    req = lambda idx, admitted, start, first, end: {"idx": idx, "admitted_s": admitted, "prefill_start_s": start,  # noqa: E731
+                                                    "first_token_s": first, "finished_s": end}
+    rows = timeline_rows([req(0, 0.0, 0.0, 0.5, 9.0), req(1, 0.0, 0.0, 0.5, 2.0), req(2, 0.0, 0.5, 1.0, 1.0),
+                          req(3, 1.0, 1.0, 1.2, 5.0)])
+    assert {(r["phase"], r["x0"], r["x1"], r["y0"], r["y1"]) for r in rows} == {
+        ("prefill", 0.0, 0.5, 0, 2), ("KV reserved, waiting", 0.0, 0.5, 2, 3), ("queued, no KV", 0.0, 1.0, 3, 4),
+        ("prefill", 0.5, 1.2, 0, 1), ("decode", 0.5, 1.2, 1, 3),  # two requests' prefills back to back: one band
+        ("decode", 1.2, 2.0, 0, 3), ("decode", 2.0, 5.0, 0, 2), ("decode", 5.0, 9.0, 0, 1)}
+    drawn, _ = charts(step_record())
+    assert by_id(drawn)["timeline"]["light"]["encoding"]["y"]["field"] == "y0"
 
 
 def test_budget_follows_the_trace_and_colours_follow_the_entity():
-    drawn, data, _ = charts(step_record())
+    drawn, data = charts(step_record())
     assert {s["budget"] for s in data["steps"]} == {8}
     tokens = by_id(drawn)["tokens_per_step"]
     for theme in ("light", "dark"):
@@ -91,7 +105,7 @@ def test_budget_follows_the_trace_and_colours_follow_the_entity():
 
 def test_static_record_draws_measured_group_bars_and_its_requests():
     m = Metrics()
-    m.set_policy(policy(engine="naive", order="input", admission="groups", prefix_sharing=False))
+    m.set_policy(policy(engine="naive", order="input", admission="groups", sharing="none"))
     m.add_group(group=0, n=2, kinds={"generate": 2}, padded=True, padded_len=10, T=4, prompt_tokens=15, start_ms=1.0,
                 shared_prefix_len=0, prefill_s=0.01, decode_steps=3, decode_s=0.03, wasted_slots=2)
     for i, (prompt, out) in enumerate([(10, 4), (5, 2)]):
@@ -99,9 +113,9 @@ def test_static_record_draws_measured_group_bars_and_its_requests():
                          output_tokens=out, prefix_hit_tokens=0, finish_reason="length", admitted_step=None,
                          prefill_start_step=None, first_token_step=None, finished_step=None, admitted_ms=1.0,
                          prefill_start_ms=1.0, first_token_ms=11.0, finished_ms=11.0 + 10.0 * (out - 1))
-    drawn, data, notes = charts(m.to_dict())
+    drawn, data = charts(m.to_dict())
     ids = [c["id"] for c in drawn]
-    assert ids[0] == "tokens_per_group" and "in_flight" not in ids and "hit_hist" not in ids and notes == []
+    assert ids[0] == "tokens_per_group" and "in_flight" not in ids and "hit_hist" not in ids
     assert data["groups"] == [{"group": 0, "n": 2, "padded_len": 10, "prefill": 15, "padding": 5, "decode": 4,
                                "dead_slots": 2, "wasted": 7, "prefill_s": 0.01, "decode_s": 0.03, "decode_steps": 3}]
     assert "apportioned" in by_id(drawn)["output_len"]["description"]
@@ -120,7 +134,7 @@ def vllm_record():
 
 
 def test_vllm_record_uses_its_own_names_and_clock():
-    drawn, data, _ = charts(vllm_record())
+    drawn, data = charts(vllm_record())
     assert "kv" in [c["id"] for c in drawn]
     first = data["steps"][0]
     assert (first["x0"], first["x1"]) == (0.0, 0.005)  # vLLM's origin is generate()'s start: no shift
@@ -133,28 +147,15 @@ def test_vllm_record_uses_its_own_names_and_clock():
 
 
 def test_reference_trace_shares_the_time_axis():
-    drawn, data, _ = charts(step_record(), {"record": vllm_record(), "prefix_cache": True})
+    drawn, data = charts(step_record(), {"record": vllm_record(), "prefix_cache": True})
     ours, theirs = by_id(drawn)["tokens_per_step"], by_id(drawn)["tokens_per_step_vllm"]
     domain = ours["light"]["layer"][0]["encoding"]["x"]["scale"]["domain"]
     assert domain == theirs["light"]["layer"][0]["encoding"]["x"]["scale"]["domain"] == [0, 0.78]
     assert theirs["light"]["data"]["name"] == "reference_steps" and len(data["reference_steps"]) == 3
 
 
-def test_a_record_from_before_end_ms_falls_back_to_the_step_index():
-    old = step_record()
-    del old["steps"]["end_ms"], old["request_trace"]
-    for k in ("step_prefill_budget", "kv_reserved_tokens", "kv_written_tokens"):
-        del old["steps"][k]
-    old["policy"]["engine"] = "step"  # the engine's name before the rename
-    drawn, data, notes = charts(old)
-    assert [c["id"] for c in drawn] == ["tokens_per_step", "in_flight", "kv"] and "predates end_ms" in notes[0]
-    assert [(s["x0"], s["x1"]) for s in data["steps"]] == [(0, 1), (1, 2), (2, 3)]
-    assert data["steps"][0]["kv_held_pct"] == 40.0  # 10 usable blocks, 6 free after commit
-    assert by_id(drawn)["tokens_per_step"]["light"]["layer"][0]["encoding"]["x"]["title"] == "step"
-
-
 def test_no_trace_no_charts():
-    assert charts({"meta": {}, "timing": {}}) == ([], {}, [])
+    assert charts({"meta": {}, "timing": {}}) == ([], {})
 
 
 def test_log_ticks_stay_sparse():
@@ -163,7 +164,7 @@ def test_log_ticks_stay_sparse():
 
 
 def test_tokens_per_step_marks_where_the_run_ends():
-    drawn, data, _ = charts(step_record(), {"record": vllm_record(), "prefix_cache": True})
+    drawn, data = charts(step_record(), {"record": vllm_record(), "prefix_cache": True})
     for cid, last in (("tokens_per_step", 2), ("tokens_per_step_vllm", 2)):
         done = next(layer for layer in by_id(drawn)[cid]["light"]["layer"] if "layer" in layer)
         assert done["transform"][0] == {"filter": f"datum.step === {last}"}, cid

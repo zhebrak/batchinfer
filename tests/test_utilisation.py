@@ -55,6 +55,16 @@ def test_utilisation_against_the_cards_own_peaks():
     assert mbu is None and record["model_gb_moved"] is None
     assert utilisation(TINY, {"steps": {"decode_rows": [0]}}, A100, 1.0) == (None, None, None)  # no request trace
     assert utilisation(None, details, A100, 1.0) == (None, None, None)  # no model shape
+    fp8 = dict(details, executor={"kv_dtype": "fp8"})  # an fp8 KV pool: half the KV bytes per token moved
+    _, mbu8, record8 = utilisation(TINY, fp8, A100, flops / 312e12)
+    moved8 = 3 * TINY.weight_bytes + 18 * TINY.kv_bytes_per_token // 2
+    _, mbu_v, _ = utilisation(TINY, details, A100, flops / 312e12, {"quantization": "fp8", "kv_cache_dtype": "fp8"})
+    moved_v = 3 * TINY.weight_bytes // 2 + 18 * TINY.kv_bytes_per_token // 2  # vLLM's fp8 rows by the same rule
+    assert mbu_v == round(100 * moved_v / (flops / 312e12) / 1555e9, 1)
+    _, mbu_q, _ = utilisation(TINY, dict(details, executor={"quant": "fp8"}), A100, flops / 312e12)
+    assert mbu_q == round(100 * (3 * TINY.weight_bytes // 2 + 18 * TINY.kv_bytes_per_token) / (flops / 312e12) / 1555e9, 1)
+    assert mbu8 == round(100 * moved8 / (flops / 312e12) / 1555e9, 1)
+    assert record8["model_gb_moved"] == round(moved8 / 1e9, 1) < round(moved / 1e9, 1) or moved8 // 1e8 == moved // 1e8
 
 
 def test_shape_of_a_dense_config_only():
@@ -81,7 +91,8 @@ class Traced:
         rows = [dict(dict.fromkeys(REQUEST_FIELDS), idx=i, id=r["id"], analysis_kind="generate", prompt_len=5,
                      max_tokens=r["max_tokens"], output_tokens=r["max_tokens"], prefix_hit_tokens=0,
                      finish_reason="length") for i, r in enumerate(self.requests)]
-        return {"steps": {"decode_rows": [0, 1]}, "request_trace": {k: [row[k] for row in rows] for k in REQUEST_FIELDS}}
+        return {"steps": {"decode_rows": [0, 1], "end_ms": [1.0, 2.0]},
+                "request_trace": {k: [row[k] for row in rows] for k in REQUEST_FIELDS}}
 
 
 def test_timed_pass_records_mfu_and_mbu(tmp_path, monkeypatch):

@@ -19,7 +19,7 @@ None, as does a card missing from the peak tables, rather than a wrong number).
 """
 from dataclasses import asdict, dataclass
 
-from batchinfer.metrics import BF16_DENSE_FLOPS, HBM_BYTES_PER_S
+from batchinfer.metrics import peak_bandwidth, peak_flops
 
 DTYPE_BYTES = {"bfloat16": 2, "float16": 2, "float32": 4}
 
@@ -34,6 +34,7 @@ class Shape:
     intermediate: int
     vocab: int
     dtype_bytes: int
+    kv_dtype_bytes: int = None  # the KV pool's bytes per element when it differs from the weights' (an fp8 pool)
 
     @property
     def body_params(self):
@@ -51,7 +52,7 @@ class Shape:
 
     @property
     def kv_bytes_per_token(self):
-        return 2 * self.layers * self.kv_dim * self.dtype_bytes  # K and V
+        return 2 * self.layers * self.kv_dim * (self.kv_dtype_bytes or self.dtype_bytes)  # K and V
 
 
 def shape_of(config):
@@ -117,23 +118,38 @@ def requests_of(details):
     return list(zip(trace["prompt_len"], trace["prefix_hit_tokens"], trace["output_tokens"]))
 
 
-def utilisation(shape, details, gpu, wall_s):
+def bytes_of(details, opts):
+    """(weight bytes per parameter, KV bytes per element) a row moved, by what it ran, the same rule for both
+    engines: fp8 weights (batchinfer quant=fp8, vLLM quantization=fp8) and an fp8 cache (batchinfer kv_dtype=fp8,
+    vLLM kv_cache_dtype=fp8) are one byte; None where the row says nothing (the model's dtype then)."""
+    ex, opts = details.get("executor") or {}, opts or {}
+    fp8_w = ex.get("quant") == "fp8" or opts.get("quant") == "fp8" or str(opts.get("quantization", "")).startswith("fp8")
+    fp8_kv = ex.get("kv_dtype") == "fp8" or opts.get("kv_dtype") == "fp8" or str(opts.get("kv_cache_dtype", "")).startswith("fp8")
+    return (1 if fp8_w else None), (1 if fp8_kv else None)
+
+
+def utilisation(shape, details, gpu, wall_s, opts=None):
     """(mfu_pct, mbu_pct, record): record holds the counts behind them, for the run page; each is None when an
-    input is missing (no shape, no request trace, no forward count, or a card without a listed peak)."""
+    input is missing (no shape, no request trace, no forward count, or a card without a listed peak). The bytes
+    moved follow what the row ran (bytes_of): fp8 weights and an fp8 cache are one byte each, on both engines."""
     requests = requests_of(details)
     if shape is None or requests is None or not wall_s:
         return None, None, None
+    w_bytes, kv_bytes = bytes_of(details, opts)
+    if w_bytes is not None or kv_bytes is not None:
+        shape = Shape(**{**asdict(shape), "dtype_bytes": w_bytes or shape.dtype_bytes,
+                         "kv_dtype_bytes": kv_bytes or shape.kv_dtype_bytes or shape.dtype_bytes})
     w = work(shape, requests)
     passes = forward_passes(details)
     flops = w["dense_flops"] + w["attention_flops"]
     moved = None if passes is None else passes * shape.weight_bytes + w["kv_tokens_moved"] * shape.kv_bytes_per_token
-    peak_flops, peak_bw = BF16_DENSE_FLOPS.get(gpu), HBM_BYTES_PER_S.get(gpu)
-    mfu = round(100 * flops / wall_s / peak_flops, 1) if peak_flops else None
+    flops_peak, peak_bw = peak_flops(gpu), peak_bandwidth(gpu)
+    mfu = round(100 * flops / wall_s / flops_peak, 1) if flops_peak else None
     mbu = round(100 * moved / wall_s / peak_bw, 1) if peak_bw and moved is not None else None
     record = {"model_tflop": round(flops / 1e12, 2),
               "attention_flop_pct": round(100 * w["attention_flops"] / flops, 1) if flops else None,
               "model_gb_moved": None if moved is None else round(moved / 1e9, 1),
               "forward_passes": passes, "query_tokens": w["query_tokens"],
-              "peak_bf16_tflops": peak_flops and peak_flops / 1e12, "peak_hbm_gb_per_s": peak_bw and peak_bw / 1e9,
+              "peak_bf16_tflops": flops_peak and flops_peak / 1e12, "peak_hbm_gb_per_s": peak_bw and peak_bw / 1e9,
               **{f"shape_{k}": v for k, v in asdict(shape).items()}}
     return mfu, mbu, record

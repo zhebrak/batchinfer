@@ -2,9 +2,9 @@
 
     python -m bench.run workloads/mixed-quick.jsonl --backend naive
     python -m bench.run workloads/mixed-quick.jsonl --backend batchinfer \\
-        --opt order=decode_ratio_desc --opt prefill_budget=auto --opt prefix_sharing=false
+        --opt order=decode_ratio_desc --opt prefill_budget=auto --opt sharing=none
     python -m bench.run workloads/mixed-quick.jsonl --backend batchinfer \\
-        --opt prefix_sharing=true --opt order=prefix_dfs --opt prefill_budget=583 --opt num_blocks=3750
+        --opt sharing=token --opt order=prefix_dfs --opt prefill_budget=583 --opt num_blocks=3750
 
 (`batchinfer` and `naive` are bench/backends.py's names for batchinfer.bench:BatchinferBackend and :NaiveBackend.)
 The runner times the constructor plus one warmup call as load_s, then for every timed pass calls reset(), and
@@ -98,7 +98,7 @@ class NaiveBackend(_Backend):
 
     @staticmethod
     def _policy_config(order=NAIVE_ORDER, max_batch_tokens="auto", batch_size=DEFAULT_BATCH_SIZE):
-        return PolicyConfig(engine="naive", order=order, admission="groups", prefix_sharing=False,
+        return PolicyConfig(engine="naive", order=order, admission="groups", sharing="none",
                             max_batch_tokens=budget_tokens(max_batch_tokens),
                             max_batch_size=int(batch_size)).validate()
 
@@ -111,37 +111,50 @@ def _flag(name, value):
     return value
 
 
+# How a load option's value is read from --opt text before it reaches the executor; the rest pass through as parsed.
+COERCE = {"reserve_gb": lambda v: v if v == "auto" else float(v), "num_blocks": lambda v: int(v) if v else None,
+          "cuda_graphs": lambda v: _flag("cuda_graphs", v),
+          "block_size": int, "fa_version": lambda v: v if v == "auto" else int(v),
+          "ridge_tokens": lambda v: int(v) if v else None, "overlap": lambda v: v}
+
+
 class BatchinferBackend(_Backend):
     """The batchinfer engine (ours): every forward carries all decode rows plus prefill chunks, under a Policy."""
     name = "batchinfer"
-    load_opts = ("reserve_gb", "num_blocks", "dtype", "seed", "fa_version", "fused_layers", "cuda_graphs")
+    # The executor's keyword parameters, every one of them but the internal ones (tests/test_step_engine_cpu.py
+    # checks this list against Executor.__init__'s signature, so a new executor knob reaches --opt and the suite's
+    # arms through this one list). Their defaults live in Executor.__init__ alone: an option not given is not passed.
+    load_opts = ("dtype", "reserve_gb", "num_blocks", "seed", "fa_version", "layers", "cuda_graphs", "graph_max_rows",
+                 "block_size", "ridge_tokens", "quant", "kv_dtype", "overlap", "attention", "pool")
+    internal = ("model_name", "device", "model", "probe", "build", "compile_backend")  # tests' and scripts' knobs
 
-    def __init__(self, model, reserve_gb="auto", num_blocks=None, dtype="bfloat16", seed=None, fa_version=2,
-                 fused_layers="auto", cuda_graphs="auto", **policy_opts):
-        """num_blocks sets the KV pool size directly (block 0 is the pad block), so a row that must bind on
-        memory means the same thing on every card; by default the pool is sized on the card (reserve_gb="auto":
-        the largest step measured, the pool up to sizing.MAX_PEAK_SHARE), so it differs between a 40 GB A100 and
-        an 80 GB H100. fa_version: FlashAttention 2, or 3 on sm90 (executor.check_fa_version refuses anything else,
-        strings and bools included). fused_layers: Qwen3's layers fused with vLLM's kernels (qwen3_fused.py). cuda_graphs: decode-only
-        steps replayed from CUDA graphs captured at load. Both default to "auto", on exactly where they can run (Qwen3
-        on a GPU; graphs with FlashAttention-2); false runs HF's layers eagerly, the non-optimised setup."""
+    def __init__(self, model, **opts):
+        """Load options (load_opts) build the executor: num_blocks sets the KV pool size directly (block 0 is the pad
+        block), so a row that must bind on memory means the same thing on every card; by default the pool is sized
+        on the card (reserve_gb="auto": the largest step measured, the pool up to sizing.MAX_PEAK_SHARE). fa_version:
+        FlashAttention 2, 3, or auto (3 where it runs: sm90). layers: fused (Qwen3's layers with vLLM's kernels,
+        qwen3_fused.py), compiled (HF's layers under torch.compile) or hf (HF's layers eagerly, the non-optimised
+        setup), auto by default (the first that can run); cuda_graphs: steps replayed from CUDA graphs captured at
+        load, auto by default. Every other option is a policy option (_policy_config)."""
         from transformers import AutoTokenizer
 
         from .executor import Executor
         from .step_engine import StepEngine
-        self.cfg = self._policy_config(**policy_opts)
+        build = {k: COERCE.get(k, lambda v: v)(v) for k, v in opts.items() if k in self.load_opts}
+        self.cfg = self._policy_config(**{k: v for k, v in opts.items() if k not in self.load_opts})
         self.tok = AutoTokenizer.from_pretrained(model)
-        self.engine = StepEngine(Executor(model, dtype=dtype,
-                                          reserve_gb=reserve_gb if reserve_gb == "auto" else float(reserve_gb),
-                                          num_blocks=int(num_blocks) if num_blocks else None, seed=seed,
-                                          fa_version=fa_version, fused_layers=_flag("fused_layers", fused_layers),
-                                          cuda_graphs=_flag("cuda_graphs", cuda_graphs)),
-                           self.tok)
+        self.engine = StepEngine(Executor(model, **build), self.tok)
+
+    def stats(self):
+        """The engine's flat stats plus its usable KV capacity in tokens: the fairness column beside vLLM's."""
+        return {**super().stats(), "kv_capacity_tokens": self.engine.hardware.kv_pool_tokens}
 
     def reset(self):
         """A fresh load leaves the allocator holding the executor's probe (the widest step), which it does not
-        release, so after emptying the cache the probe runs again: every pass starts from that same state."""
+        release, so after emptying the cache the probe runs again: every pass starts from that same state. Blocks a
+        cache=radix job kept for the next one are dropped too: a pass never reads KV an earlier pass computed."""
         super().reset()
+        self.engine.drop_retained()
         ex = self.engine.executor
         if ex.cuda and ex.probe_peak_reserved_gb is not None:
             ex.probe()
@@ -150,8 +163,9 @@ class BatchinferBackend(_Backend):
     def _policy_config(order=PolicyConfig.order, admission=PolicyConfig.admission,
                        chunk_prefill=PolicyConfig.chunk_prefill, prefill_budget=PolicyConfig.prefill_budget,
                        max_batch_tokens="auto", batch_size=DEFAULT_BATCH_SIZE,
-                       prefix_sharing=PolicyConfig.prefix_sharing):
+                       sharing=PolicyConfig.sharing, cache=PolicyConfig.cache, memory=PolicyConfig.memory,
+                       watermark_steps=PolicyConfig.watermark_steps):
         return PolicyConfig(engine="batchinfer", order=order, admission=admission, chunk_prefill=chunk_prefill,
                             prefill_budget=prefill_budget, max_batch_tokens=budget_tokens(max_batch_tokens),
-                            max_batch_size=int(batch_size),
-                            prefix_sharing=prefix_sharing).validate()  # strings refused, never coerced
+                            max_batch_size=int(batch_size), sharing=sharing, cache=cache, memory=memory,
+                            watermark_steps=int(watermark_steps)).validate()

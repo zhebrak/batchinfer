@@ -6,7 +6,7 @@ its last prompt token, because that token's logits must come from the request's 
 prompts therefore share all but their last block. The trie is a fact about the job and holds no per-run
 state: block ids, owners and remaining-user counts live in the scheduler, in lists indexed by node id.
 
-Sizes on the mixed-quick workload (2026-09-27): 3,481 nodes over 297k prompt tokens, 17 branch points,
+Sizes on the mixed-quick workload: 3,481 nodes over 297k prompt tokens, 17 branch points,
 paths up to ~500 nodes deep. Per-block nodes and an iterative walk are enough; no radix compression.
 """
 

@@ -34,8 +34,8 @@ def test_a_group_with_longer_rows_costs_more_than_the_fit_priced():
     assert short == pytest.approx(IN_USE + 70_000 * TOKEN)  # rows no longer than the probe's cost what the fit priced
     long = naive_group_peak_gb(IN_USE, TOKEN, row_length, rows=2, row_len=32_768, footprint=70_000)
     assert long == pytest.approx(short + 2 * 32_768 * (32_768 - PROBE_ROW_TOKENS) / 2**30)  # +1.75 GiB
-    # 1.7B on the H100, the measured case: fit() measured 1.25 bytes, so 49 rows of 8,026 tokens are predicted to add
-    # 1.8 GiB; the run peaked 1.29 GiB past the probe, so the check errs on the safe side
+    # 1.7B: fit() measured 1.25 bytes, so 49 rows of 8,026 tokens are predicted to add 1.8 GiB; the run peaked
+    # 1.29 GiB past the probe, so the check errs on the safe side
     predicted = naive_group_peak_gb(0, 0, 1.25 * row_length, 49, 8026, 0)
     assert predicted == pytest.approx(1.80, abs=0.01) and predicted > 1.29
 

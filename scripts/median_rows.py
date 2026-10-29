@@ -59,8 +59,10 @@ def recompare(row, out):
     if hashlib.sha256(workload.read_bytes()).hexdigest() != m["workload_sha256"]:
         raise ValueError(f"{workload} is not the workload file {row} ran (sha256 differs)")
     requests, meta = read(workload)
-    m["compare"] = {"against": against, **compare(requests, outputs(row / "outputs.jsonl"), outputs(ref),
-                                                  set(meta.get("stop_token_ids") or ()))}
+    mine = outputs(row / "outputs.jsonl")
+    if m.get("warm"):  # a warm row timed the workload's odd-numbered half only (bench.run.timed_pass)
+        requests = [r for r in requests if r["id"] in mine]
+    m["compare"] = {"against": against, **compare(requests, mine, outputs(ref), set(meta.get("stop_token_ids") or ()))}
     path.write_text(json.dumps(m, indent=2) + "\n")
     return True
 

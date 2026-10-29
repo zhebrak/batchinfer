@@ -65,7 +65,7 @@ def reference(model, prompt_ids, max_new, ignore_eos):
 
 
 def groups(batch_size, max_batch_tokens=10000):
-    return PolicyConfig(engine="naive", order="max_tokens_desc", admission="groups", prefix_sharing=False,
+    return PolicyConfig(engine="naive", order="max_tokens_desc", admission="groups", sharing="none",
                         max_batch_tokens=max_batch_tokens, max_batch_size=batch_size)
 
 
@@ -150,8 +150,7 @@ def test_engine_refuses_a_policy_it_cannot_run(model):
 
 
 def test_a_lone_request_over_the_budget_is_refused_before_any_forward(model):
-    """The budget binds a group of one too: the probe exercised max_batch_tokens and nothing past it. Before, one
-    request alone ran at any size (a 70,001-token footprint passed under a 4,096-token budget)."""
+    """The budget binds a group of one too: the probe exercised max_batch_tokens and nothing past it."""
     tok = FixedTok()
     job = analyze([Request(id="long", prompt="long", max_tokens=8)], tok)
     footprint = job.requests[0].prompt_len + 8

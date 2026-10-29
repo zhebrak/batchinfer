@@ -9,7 +9,8 @@ import pytest
 
 from batchinfer.metrics import Metrics
 from bench.backends import Dummy
-from bench.report import index_page, main, make_server, render, table, when, with_details
+from bench.report import (configuration, index_page, launch_line, main, make_server, render, show, table, when,
+                          with_details)
 from bench.run import run
 from test_bench import workload  # noqa: F401  (the fixture only; importing tests would collect them twice)
 
@@ -19,12 +20,13 @@ def naive_metrics():
     m = Metrics()
     m.meta.update(model="stub", engine="naive", order="input", timestamp="2026-09-27T00:00:00+0000")
     m.add(requests=2, prompt_tokens=10, output_tokens=4)
-    m.add_group(group=0, n=2, kinds={"generate": 2}, padded=False, T=2)
+    m.add_group(group=0, n=2, kinds={"generate": 2}, padded=False, padded_len=5, T=2, prompt_tokens=10, start_ms=0.0,
+                shared_prefix_len=0, prefill_s=0.01, decode_steps=2, decode_s=0.02, wasted_slots=0)
     m.finish()
     return m.to_dict()
 
 
-def step_metrics(ids=("a", "b"), prefix_sharing=True):
+def step_metrics(ids=("a", "b"), sharing="block"):
     """The default batchinfer engine: no groups, a policy, a per-step and a per-request trace."""
     m = Metrics()
     m.meta.update(model="stub", engine="batchinfer", order="decode_ratio_desc", timestamp="2026-09-27T00:00:00+0000",
@@ -35,14 +37,14 @@ def step_metrics(ids=("a", "b"), prefix_sharing=True):
         m.record_step(decode_rows=1, prefill_tokens=4, prefill_rows=1, admitted=1, free_blocks=10, step_ms=1.0,
                       gpu_ms=None, sched_ms=0.1, trie_blocks=0, pinned_blocks=0, step_prefill_budget=8,
                       kv_reserved_tokens=16, kv_written_tokens=4, unprefilled_tokens=0, end_ms=1.5 * (k + 1),
-                      graph_rows=0)
+                      graph_rows=0, graph_tokens=0, mapped_groups=None)
     for i, rid in enumerate(ids):
         m.record_request(idx=i, id=rid, analysis_kind="generate", group=None, prompt_len=5, max_tokens=2,
                          output_tokens=2, prefix_hit_tokens=0, finish_reason="length", admitted_step=0,
                          prefill_start_step=0, first_token_step=0, finished_step=1, admitted_ms=0.0,
                          prefill_start_ms=0.0, first_token_ms=1.5, finished_ms=3.0)
     m.set_policy({"engine": "batchinfer", "admission_order_head": [0, 1], "admission": "continuous",
-                  "prefix_sharing": prefix_sharing})
+                  "sharing": sharing})
     m.finish()
     return m.to_dict()
 
@@ -67,9 +69,13 @@ def test_run_writes_report_page(tmp_path, workload):
     root = ET.fromstring(text)
     title = f"dummy · {m['workload'].rsplit('/', 1)[-1].removesuffix('.jsonl')} · stub"
     assert root.findtext(".//title").startswith(title) and root.findtext(".//h1") == root.findtext(".//title")
-    # what launched, the outcome, then correctness; no dump of every recorded key
-    assert [c.text for c in root.iter("caption")] == ["Launch", "Outcome", "Accuracy by source", "Match against a"]
-    assert "identical" in text and "Backend stats" not in text and "Configuration" not in text
+    # what it ran with, the outcome, then correctness, all folded under one line that gives the outcome; no dump of
+    # every recorded key
+    assert [c.text for c in root.iter("caption")] == ["Configuration", "Outcome", "Accuracy by source", "Match against a"]
+    (folded,) = root.iter("details")
+    assert folded.findtext("summary") == f"Configuration, outcome and engine counters: {m['wall_s']:.2f} s, accuracy 50.0%"
+    assert len(folded.findall(".//table")) == 4
+    assert "identical" in text and "Backend stats" not in text
     assert "labelled" in text and ">50.0<" in text  # accuracy as a %, like every other share on the page
     assert "match %" in text and "identical %" in text
     assert 'href="metrics.json"' in text and 'href="outputs.jsonl"' in text and "details.json" not in text
@@ -121,36 +127,40 @@ def test_tables_with_a_header_sort(tmp_path, workload):
         assert e.get("integrity").startswith("sha384-") and e.get("crossorigin") == "anonymous"
 
 
+def runs_table(root):
+    """The index's table of runs (the arms matrix, when the rows make one, comes first)."""
+    return next(t for t in root.iter("table") if t.get("id") == "bench")
+
+
 def text(e):
     return "".join(e.itertext()).strip()
 
 
 def test_index_has_a_column_per_launch_knob_then_the_tradeoff_numbers(tmp_path, workload):
     m = dict(run(workload[0], "dummy", out=tmp_path / "a"), gpu="NVIDIA H100 PCIe")
-    stats = {"steps": 100, "order": "prefix_dfs", "prefix_sharing": True, "prefill_budget": 583,
-             "prefill_budget_adaptive": True, "prefix_hit_pct": 80.0, "ideal_prefix_reuse_page16": 0.8045,
-             "mean_decode_batch": 20.0, "fused_layers": True, "cuda_graphs": True, "fa_version": 2,
+    stats = {"steps": 100, "order": "prefix_dfs", "sharing": "block", "prefill_budget": 583,
+             "prefill_budget_ridge": True, "ridge_tokens": 256, "prefix_hit_pct": 80.0, "ideal_prefix_reuse_page16": 0.8045,
+             "mean_decode_batch": 20.0, "layers": "fused", "cuda_graphs": True, "fa_version": 2,
              "graph_step_pct": 81.3}
     bi = dict(m, backend="batchinfer", engine="batchinfer", opts={}, wall_s=25.0, backend_stats=stats,
               gpu_util_mean=85.1, mfu_pct=16.6, mbu_pct=40.2)
     variants = {"vllm": dict(m, backend="vllm", engine="vllm", opts={}, wall_s=10.0),
                 "vllm-off": dict(m, backend="vllm", engine="vllm", opts={"enable_prefix_caching": False}, wall_s=20.0),
                 "bi": bi,
-                "bi-off": dict(bi, opts={"prefix_sharing": False, "admission": "continuous"}, length_violations=2,
-                               backend_stats=dict(stats, prefix_sharing=False, prefill_budget_adaptive=False,
-                                                  fused_layers=False, cuda_graphs=False)),
-                # rows from before the engine rename record no engine, only their backend class
-                "legacy-naive": dict(m, backend="batchinfer.bench:EngineBackend", engine=None, opts={}, wall_s=140.0,
-                                     backend_stats={"max_batch_tokens": 196608, "order": "max_tokens_desc"}),
-                "branch-bi": dict(bi, backend="batchinfer.bench:StepBackend", engine=None, branch="feature-x")}
+                "bi-off": dict(bi, opts={"sharing": "none", "admission": "continuous"}, length_violations=2,
+                               backend_stats=dict(stats, sharing="none", prefill_budget_ridge=False,
+                                                  layers="hf", cuda_graphs=False)),
+                "naive": dict(m, backend="naive", engine="naive", opts={}, wall_s=140.0,
+                              backend_stats={"max_batch_tokens": 196608, "order": "max_tokens_desc"}),
+                "branch-bi": dict(bi, branch="feature-x")}
     root = ET.fromstring(index_page(tmp_path, {tmp_path / k / "metrics.json": v for k, v in variants.items()}))
     table = next(root.iter("table"))
-    assert table.get("id") == "bench"  # nothing comes before the runs
+    assert table.get("id") == "bench"  # no suite workload, so no arms matrix before the runs
     header = table.find("thead").findall(".//th")
     titles = [text(th) for th in header]
     assert titles == ["engine", "workload", "model", "GPU", "prefix reuse", "order", "prefill budget", "layers", "graphs",
                       "wall s", "× vLLM", "accuracy %", "prefix hit %", "steps", "ms/step", "decode batch",
-                      "GPU util %", "MFU %", "MBU %", "commit"]  # utilisation, every engine counted alike; provenance last
+                      "GPU util %", "MFU %", "MBU %"]  # utilisation, every engine counted alike
     for th in header:  # every column explains itself on hover
         button = th.find("button")
         assert button.get("data-bs-toggle") == "tooltip" and button.get("title"), text(th)
@@ -158,23 +168,20 @@ def test_index_has_a_column_per_launch_knob_then_the_tradeoff_numbers(tmp_path, 
     assert [header[titles.index(t)].get("class") for t in ("wall s", "× vLLM", "order")] == ["n", "n", None]
     trs = table.find("tbody").findall("tr")
     # baselines first: naive, vLLM with its cache off then on, then batchinfer with the global trie
-    assert [tr.find("th/a").get("title") for tr in trs] == ["legacy-naive", "vllm-off", "vllm", "bi", "branch-bi",
-                                                            "bi-off"]
+    assert [tr.find("th/a").get("title") for tr in trs] == ["naive", "vllm-off", "vllm", "bi", "branch-bi", "bi-off"]
     assert trs[3].find("th/a").get("href") == "bi/report.html"  # the engine heads the row and links its page
     rows = {tr.find("th/a").get("title"): [text(tr.find("th")), *[text(td) for td in tr.findall("td")]] for tr in trs}
     cell = lambda run, title: rows[run][titles.index(title)]  # noqa: E731
-    assert [cell(r, "engine") for r in ("vllm", "bi", "legacy-naive", "branch-bi")] == [
+    assert [cell(r, "engine") for r in ("vllm", "bi", "naive", "branch-bi")] == [
         "vllm", "batchinfer", "naive", "batchinfer"]
-    assert [cell(r, "prefix reuse") for r in ("vllm", "vllm-off", "bi", "bi-off", "legacy-naive")] == [
+    assert [cell(r, "prefix reuse") for r in ("vllm", "vllm-off", "bi", "bi-off", "naive")] == [
         "prefix cache", "off", "global trie", "off", "off"]
-    assert [cell(r, "order") for r in ("vllm", "bi", "legacy-naive")] == ["-", "prefix_dfs", "max_tokens_desc"]
-    assert [cell(r, "prefill budget") for r in ("bi", "bi-off", "vllm")] == ["adaptive from 583", "583", "-"]
-    # what the forward was: the engine's recorded build, vLLM's compile, naive's HF layers; rows from before the
-    # engine recorded it (branch-bi's StepBackend) ran HF layers eagerly
-    assert [cell(r, "layers") for r in ("bi", "bi-off", "vllm", "legacy-naive", "branch-bi")] == [
+    assert [cell(r, "order") for r in ("vllm", "bi", "naive")] == ["-", "prefix_dfs", "max_tokens_desc"]
+    assert [cell(r, "prefill budget") for r in ("bi", "bi-off", "vllm")] == ["ridge 256", "583", "-"]
+    # what the forward was: the engine's recorded build, vLLM's compile, naive's HF layers
+    assert [cell(r, "layers") for r in ("bi", "bi-off", "vllm", "naive", "branch-bi")] == [
         "fused", "HF", "compiled", "HF", "fused"]
-    assert [cell(r, "graphs") for r in ("bi", "bi-off", "vllm", "legacy-naive")] == ["decode 81%", "off", "on", "off"]
-    assert cell("branch-bi", "commit").split(" · ")[0].endswith("@feature-x")
+    assert [cell(r, "graphs") for r in ("bi", "bi-off", "vllm", "naive")] == ["decode 81%", "off", "on", "off"]
     # each column at its own fixed decimals, so the points line up
     assert [cell(r, "× vLLM") for r in ("vllm", "vllm-off", "bi")] == ["1.00", "2.00", "2.50"]
     assert (cell("bi", "wall s"), cell("bi-off", "wall s")) == ("25.00", "25.00 invalid")  # broke the length rules
@@ -189,7 +196,7 @@ def test_index_has_a_column_per_launch_knob_then_the_tradeoff_numbers(tmp_path, 
     assert hit.get("title") == "block ceiling 80.5%"
     form = next(f for f in root.iter("form") if f.get("data-table") == "bench")
     selects = {label.text: label.find("select") for label in form.iter("label") if label.find("select") is not None}
-    assert list(selects) == ["engine", "workload", "model", "GPU", "prefix reuse", "order", "layers", "graphs", "commit"]
+    assert list(selects) == ["engine", "workload", "model", "GPU", "prefix reuse", "order", "layers", "graphs"]
     assert [o.text for o in selects["engine"].findall("option")] == ["all", "batchinfer", "naive", "vllm"]
     assert [o.text for o in selects["prefix reuse"].findall("option")] == ["all", "global trie", "off", "prefix cache"]
     assert selects["engine"].get("data-col") == "0"  # the row header
@@ -203,7 +210,7 @@ def test_a_vllm_row_with_max_num_seqs_names_it_in_its_own_column(tmp_path, workl
                 "vllm-512": dict(m, backend="vllm", engine="vllm", opts={"max_num_seqs": 512}, wall_s=12.5),
                 "bi": dict(m, backend="batchinfer", engine="batchinfer", opts={}, wall_s=25.0)}
     page = index_page(tmp_path, {tmp_path / k / "metrics.json": v for k, v in variants.items()})
-    table = next(ET.fromstring(page).iter("table"))
+    table = runs_table(ET.fromstring(page))
     titles = [text(th) for th in table.find("thead").findall(".//th")]
     assert titles[titles.index("graphs"):titles.index("× vLLM") + 1] == ["graphs", "max seqs", "wall s", "× vLLM"]
     rows = {tr.find("th/a").get("title"): [text(tr.find("th")), *[text(td) for td in tr.findall("td")]]
@@ -229,7 +236,7 @@ def suite_rows(m):
         "vllm": row("vllm", {}, 10.0),
         "vllm-off": row("vllm", {"enable_prefix_caching": False}, 20.0),
         "bi": row("batchinfer", {}, 25.0),
-        "bi-nosharing": row("batchinfer", {"prefix_sharing": False}, 40.0, sha="old1234",
+        "bi-nosharing": row("batchinfer", {"sharing": "none"}, 40.0, sha="old1234",
                             commit="2026-09-27T12:00:00+00:00"),
         "bi-input": row("batchinfer", {"order": "input"}, 30.0, length_violations=3),
         "vllm-classify": row("vllm", {}, 4.0, stem="classify-quick", preset="classify"),
@@ -242,7 +249,7 @@ def test_markdown_table_is_the_index_table_in_its_order(tmp_path, workload):
     lines = table(list(rows.values())).splitlines()
     # the columns no row fills (the engine counters, utilisation) are left out, as on the index
     assert lines[0] == ("| engine | workload | model | GPU | prefix reuse | order | layers | graphs | wall s | × vLLM | "
-                        "accuracy % | commit |")
+                        "accuracy % |")
     firsts = [line.split(" | ")[:2] for line in lines[2:]]
     assert firsts == [["| naive", "mixed-quick"], ["| naive", "mixed-quick"], ["| vllm", "mixed-quick"],
                       ["| vllm", "mixed-quick"], ["| batchinfer", "mixed-quick"], ["| batchinfer", "mixed-quick"],
@@ -262,15 +269,31 @@ def test_index_leaves_out_and_names_the_columns_no_run_fills(tmp_path, workload)
     opens with what it holds and how to read it."""
     rows = suite_rows(run(workload[0], "dummy", out=tmp_path / "a"))
     root = ET.fromstring(index_page(tmp_path, {tmp_path / k / "metrics.json": v for k, v in rows.items()}))
-    titles = [text(th) for th in next(root.iter("table")).find("thead").iter("th")]
+    titles = [text(th) for th in runs_table(root).find("thead").iter("th")]
     assert titles == ["engine", "workload", "model", "GPU", "prefix reuse", "order", "layers", "graphs", "wall s",
-                      "× vLLM", "accuracy %", "commit"]
+                      "× vLLM", "accuracy %"]
     notes = [p.text for p in root.iter("p") if p.get("class") == "note"]
-    assert notes == ["Blank in every run, so not shown: prefill budget, max seqs, prefix hit %, steps, ms/step, "
-                     "decode batch, GPU util %, MFU %, MBU %."]
+    assert notes == ["Blank in every run, so not shown: arm, prefill budget, max seqs, prefix hit %, steps, ms/step, "
+                     "decode batch, KV tokens, GPU util %, MFU %, MBU %."]
     assert subtitle(root).startswith("9 runs: 2 workloads, 1 model, 1 GPU. Each band is one job")
-    trs = next(root.iter("table")).find("tbody").findall("tr")
+    trs = runs_table(root).find("tbody").findall("tr")
     assert len({tr.get("data-group") for tr in trs}) == 2  # mixed-quick and classify-quick
+
+
+def test_the_index_opens_with_the_arms_matrix_closed(tmp_path, workload):
+    """Every arm with a row on every suite workload: wall s, and × its like-for-like vLLM row in brackets; a row
+    that broke the length rules (bi-input) shows no wall, so its arm is left out."""
+    rows = suite_rows(run(workload[0], "dummy", out=tmp_path / "a"))
+    root = ET.fromstring(index_page(tmp_path, {tmp_path / k / "metrics.json": v for k, v in rows.items()}))
+    details = next(root.iter("details"))  # closed until clicked, so the run table is what the page opens on
+    assert details.get("open") is None
+    assert details.findtext("summary") == "Every arm on every workload, Qwen3-1.7B on H100-PCIe: wall s (× its vLLM reference)"
+    matrix = details.find(".//table")
+    assert matrix.find("caption") is None and runs_table(root) is not matrix
+    assert [text(th) for th in matrix.find("thead").iter("th")] == ["arm", "mixed", "classify"]
+    cells = {text(tr.find("th")): [text(td) for td in tr.findall("td")] for tr in matrix.find("tbody").findall("tr")}
+    assert cells == {"vLLM cache on": ["10.0", "4.0"], "vLLM cache off": ["20.0 (2.00x)", "-"],
+                     "batchinfer": ["25.0 (2.50x)", "6.0 (1.50x)"], "no trie": ["40.0 (4.00x)", "-"]}
 
 
 def test_details_fill_what_a_rows_stats_lack():
@@ -288,30 +311,58 @@ def test_details_fill_what_a_rows_stats_lack():
 
 
 def test_html_index_takes_a_naive_rows_order_from_its_details(tmp_path, workload):
-    run(workload[0], "dummy", out=tmp_path / "old")
-    metrics = tmp_path / "old" / "metrics.json"
+    run(workload[0], "dummy", out=tmp_path / "naive")
+    metrics = tmp_path / "naive" / "metrics.json"
     m = json.loads(metrics.read_text())
-    m.update(engine=None, backend="batchinfer.bench:EngineBackend", backend_stats={"max_batch_tokens": 196608})
+    m.update(engine="naive", backend="naive", backend_stats={"max_batch_tokens": 196608})
     metrics.write_text(json.dumps(m))
-    (tmp_path / "old" / "details.json").write_text(json.dumps({"policy": {"engine": "static",
-                                                                          "order": "max_tokens_desc"}}))
+    (tmp_path / "naive" / "details.json").write_text(json.dumps({"policy": {"engine": "naive",
+                                                                            "order": "max_tokens_desc"}}))
     main(["--html", str(tmp_path)])
     index = ET.fromstring((tmp_path / "index.html").read_text())
-    t = next(index.iter("table"))
+    t = runs_table(index)
     tr = t.find("tbody/tr")
     row = dict(zip([text(th) for th in t.find("thead").iter("th")], [text(tr.find("th")), *map(text, tr.findall("td"))]))
     assert [row[k] for k in ("engine", "prefix reuse", "order")] == ["naive", "off", "max_tokens_desc"]
-    page = ET.fromstring((tmp_path / "old" / "report.html").read_text())
-    launch = next(t for t in page.iter("table") if t.findtext("caption") == "Launch")
+    page = ET.fromstring((tmp_path / "naive" / "report.html").read_text())
+    launch = next(t for t in page.iter("table") if t.findtext("caption") == "Configuration")
     assert {text(r.find("th")): text(r.find("td")) for r in launch.iter("tr")}["order"] == "max_tokens_desc"
 
 
-def test_commit_filter_lists_the_newest_commit_first(tmp_path, workload):
-    rows = suite_rows(run(workload[0], "dummy", out=tmp_path / "a"))
-    root = ET.fromstring(index_page(tmp_path, {tmp_path / k / "metrics.json": v for k, v in rows.items()}))
-    form = next(f for f in root.iter("form") if f.get("data-table") == "bench")
-    commit = next(label.find("select") for label in form.iter("label") if label.text == "commit")
-    assert [o.text for o in commit.findall("option")] == ["all", "new1234 · 09-27 16:24", "old1234 · 09-27 12:00"]
+def test_the_configuration_shows_every_setting_defaults_included():
+    """A batchinfer page lists what the engine recorded it ran with, the defaults too, so the page alone says what
+    ran; an option shown in its own row is not repeated under other opts, any other is."""
+    m = {"engine": "batchinfer", "column": "preempt lookahead 32", "by_source": {},
+         "opts": {"memory": "preempt", "watermark_steps": 32, "seed_note": "x"},
+         "backend_stats": {"sharing": "block", "order": "prefix_dfs", "prefill_budget": 16384, "layers": "fused",
+                           "fa_version": 3, "cuda_graphs": True, "graph_step_pct": 99.0, "kv_capacity_tokens": 283552}}
+    details = {"policy": {"cache": "job", "admission": "continuous", "memory": "preempt", "watermark_steps": 32,
+                          "chunk_prefill": True},
+               "executor": {"pool": "static", "quant": "none", "kv_dtype": "auto", "attention": "fa", "overlap": False},
+               "volume": {"kv_block_size": 16}}
+    cell = lambda v: " ".join(v) if isinstance(v, tuple) else show(v)  # noqa: E731  (chips: one badge each)
+    rows = {label: cell(v) for label, _, v in configuration(m, details) if v is not None and v != ()}
+    assert rows == {"arm": "preempt lookahead 32", "prefix reuse": "global trie", "cross-job cache": "job",
+                    "order": "prefix_dfs", "admission": "continuous", "memory": "preempt", "watermark steps": "32",
+                    "prefill budget": "16,384", "chunked prefill": "on", "KV tokens": "283,552", "block size": "16",
+                    "KV pool": "static", "weights": "bf16", "KV dtype": "bf16", "attention": "fa",
+                    "layers": "fused · FA3", "graphs": "decode 99%", "overlap": "off", "other opts": "seed_note=x"}
+    vllm = {"engine": "vllm", "column": "vLLM capped", "by_source": {}, "backend_stats": {"kv_capacity_tokens": 70000},
+            "opts": {"kv_cache_memory_bytes": 8 * 2**30, "max_model_len": 800}}
+    rows = {label: cell(v) for label, _, v in configuration(vllm, None) if v is not None and v != ()}
+    assert rows == {"arm": "vLLM capped", "prefix reuse": "prefix cache", "KV tokens": "70,000", "KV cap GiB": "8.0",
+                    "weights": "bf16", "KV dtype": "bf16", "layers": "compiled", "graphs": "on",
+                    "other opts": "max_model_len=800"}
+    # the subtitle: every key setting in a line, the arm first, the rarely moved ones only away from their default
+    assert launch_line(m, details) == ("preempt lookahead 32: global trie · order prefix_dfs · memory preempt, "
+                                       "watermark 32 · prefill budget 16,384 · 283,552 KV tokens · bf16 · fused layers, "
+                                       "FA3 · graphs decode 99% · overlap off · seed_note=x")
+    assert launch_line(vllm, None) == ("vLLM capped: prefix cache · 70,000 KV tokens, capped at 8.0 GiB · bf16 · "
+                                       "compiled, graphs · max_model_len=800")
+    assert launch_line({**m, "column": "batchinfer", "opts": {}}, details).startswith("defaults: global trie")
+
+
+def test_when_reads_a_commit_time_as_utc():
     assert when("2026-09-27T17:24:03+01:00") == "09-27 16:24" and when(None) is None and when("junk") is None
 
 
@@ -373,7 +424,7 @@ def test_html_index_lists_every_run(tmp_path, workload, capsys):
     out, err = capsys.readouterr()
     lines = out.splitlines()
     gpu = " GPU |" if json.loads((tmp_path / "a" / "metrics.json").read_text()).get("gpu") else ""  # on a GPU host
-    assert len(lines) == 4 and lines[0] == f"| engine | workload | model |{gpu} wall s | accuracy % | commit |"  # filled
+    assert len(lines) == 4 and lines[0] == f"| engine | workload | model |{gpu} wall s | accuracy % |"  # filled
     assert "wrote 4 report.html" in err and "skipped 2 metrics.json" in err
     index = (tmp_path / "index.html").read_text()
     ET.fromstring(index)
@@ -453,7 +504,7 @@ class DetailedNoSharing(Dummy):
     """Dummy plus a batchinfer record that ran with prefix sharing off."""
 
     def details(self):
-        return step_metrics(prefix_sharing=False)
+        return step_metrics(sharing="none")
 
 
 def vllm_row(path, out, iterations):
@@ -504,7 +555,8 @@ def test_run_pages_link_the_index_and_the_vllm_row_they_divide_by(tmp_path, work
              for label in ("vllm", "vllm-enable_prefix_caching=False", "naive")}
     for page in pages.values():
         assert page.find(".//p[@class='back']/a").get("href") == "../index.html"
-    assert [subtitle(page) for page in pages.values()] == ["prefix cache", "prefix reuse off",
+    assert [subtitle(page) for page in pages.values()] == ["prefix cache · bf16 · compiled, graphs",
+                                                          "prefix reuse off · bf16 · compiled, graphs",
                                                           "prefix reuse off · order input"]
 
     def vs(page):

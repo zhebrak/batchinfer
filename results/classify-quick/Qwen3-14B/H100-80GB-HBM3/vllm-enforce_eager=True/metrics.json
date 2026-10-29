@@ -1,0 +1,124 @@
+{
+  "workload": "workloads/classify-quick.jsonl",
+  "workload_sha256": "c49ce11968ac90b739dc2456b7a1295f3f7974dd1cd838995b624cfda1bbca89",
+  "workload_meta_sha256": "9a2469d4df041a0d9e5161325302dde876dc2ef4609ba5788fabe428c03d369a",
+  "preset": "classify",
+  "size": "quick",
+  "mix": "mmlu:256,clinc:96,quality:24",
+  "seed": 0,
+  "lengths": "fixed",
+  "backend": "vllm",
+  "engine": "vllm",
+  "opts": {
+    "enforce_eager": true
+  },
+  "column": "vLLM eager",
+  "warm": false,
+  "model": "Qwen/Qwen3-14B",
+  "model_revision": "40c069824f4251a91eefaf281ebe4c544efd3e18",
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "versions": {
+    "python": "3.12.15",
+    "torch": "2.13.0",
+    "transformers": "5.17.0",
+    "vllm": "0.30.0"
+  },
+  "git_sha": "2f4abfd",
+  "git_commit_time": "2026-10-29T12:20:29+00:00",
+  "branch": null,
+  "timestamp": "2026-10-29T13:11:53+0000",
+  "load_s": 41.62,
+  "wall_s": 3.231,
+  "requests": 376,
+  "req_per_s": 116.36,
+  "input_tokens": 408002,
+  "unique_input_tokens": 58885,
+  "output_tokens": 599,
+  "input_tok_per_s": 126260.6,
+  "unique_input_tok_per_s": 18222.6,
+  "output_tok_per_s": 185.4,
+  "total_tok_per_s": 126446.0,
+  "ideal_prefix_reuse": 0.8557,
+  "gpu_util_mean": 87.7,
+  "mfu_pct": 54.6,
+  "mbu_pct": 3.4,
+  "utilisation": {
+    "model_tflop": 1745.61,
+    "attention_flop_pct": 5.3,
+    "model_gb_moved": 367.0,
+    "forward_passes": 10,
+    "query_tokens": 62497,
+    "peak_bf16_tflops": 989.0,
+    "peak_hbm_gb_per_s": 3350.0,
+    "shape_layers": 40,
+    "shape_hidden": 5120,
+    "shape_q_dim": 5120,
+    "shape_kv_dim": 1024,
+    "shape_intermediate": 17408,
+    "shape_vocab": 151936,
+    "shape_dtype_bytes": 2,
+    "shape_kv_dtype_bytes": null
+  },
+  "gpu_mem_peak_mb": 75551.0,
+  "gpu_clock_mhz_mean": 1509,
+  "gpu_temp_c_max": 55.0,
+  "gpu_throttled_pct": 93.8,
+  "length_violations": 0,
+  "by_source": {
+    "quality": {
+      "n": 24,
+      "kind": "classify",
+      "mean_output_tokens": 1,
+      "accuracy": 0.7083
+    },
+    "mmlu": {
+      "n": 256,
+      "kind": "classify",
+      "mean_output_tokens": 1,
+      "accuracy": 0.8359
+    },
+    "clinc": {
+      "n": 96,
+      "kind": "classify",
+      "mean_output_tokens": 3.3,
+      "accuracy": 0.8229
+    }
+  },
+  "compare": {
+    "against": "results/classify-quick/Qwen3-14B/H100-80GB-HBM3/vllm/outputs.jsonl",
+    "classify": {
+      "n": 376,
+      "match": 0.9973,
+      "identical": 0.9973
+    }
+  },
+  "backend_stats": {
+    "trace": true,
+    "kv_capacity_tokens": 276320,
+    "metrics": {
+      "estimated_flops_per_gpu": 0,
+      "estimated_read_bytes_per_gpu": 0,
+      "estimated_write_bytes_per_gpu": 0,
+      "num_requests_running": 0.0,
+      "num_requests_waiting": 0.0,
+      "num_requests_waiting_by_reason": 0.0,
+      "engine_sleep_state": 1.0,
+      "kv_cache_usage_perc": 0.0,
+      "prefix_cache_queries": 705541,
+      "prefix_cache_hits": 585104,
+      "external_prefix_cache_queries": 0,
+      "external_prefix_cache_hits": 0,
+      "mm_cache_queries": 0,
+      "mm_cache_hits": 0,
+      "num_preemptions": 0,
+      "prompt_tokens": 705541,
+      "prompt_tokens_by_source": 705541,
+      "prompt_tokens_cached": 585104,
+      "generation_tokens": 27332,
+      "request_success": 665,
+      "cache_config_info": 1.0
+    }
+  },
+  "target_s": 60,
+  "over_budget": false
+}

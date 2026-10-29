@@ -86,3 +86,20 @@ def test_rejects_duplicate_ids(tmp_path):
     p.write_text('{"prompt": "a", "id": "x"}\n{"prompt": "b", "id": "x"}\n')
     with pytest.raises(ValueError, match="w.jsonl: duplicate request id 'x'"):
         read_requests(p)
+
+
+def test_result_writer_resumes_an_earlier_file_and_knows_what_it_holds(tmp_path):
+    out = tmp_path / "outputs.jsonl"
+    res = lambda i: Result(id=i, text="hi", token_ids=[5], prompt_tokens=3, output_tokens=1, finish_reason="length",  # noqa: E731
+                           group=None, latency_s=0.0)
+    with ResultWriter(out) as w:
+        w(res("a"))
+        w(res("b"))
+    with ResultWriter(out, resume=True) as w:  # keeps a and b, appends
+        assert w.done == {"a", "b"} and w.n == 0
+        w(res("c"))
+    assert [json.loads(line)["id"] for line in out.read_text().splitlines()] == ["a", "b", "c"]
+    with ResultWriter(out, resume=False) as w:  # a fresh run starts over
+        assert w.done == set()
+    assert out.read_text() == ""
+    assert ResultWriter(tmp_path / "new.jsonl", resume=True).done == set()  # nothing to resume is fine

@@ -7,10 +7,10 @@ batchinfer engine admits each whole after the previous one finished) and the pre
 record the engine measured at load; nothing here calls CUDA.
 """
 import math
+import sys
 from collections import Counter
 
 from .analysis import lcp
-from .kv import BLOCK_SIZE
 from .schema import DEFAULT_MAX_BATCH_TOKENS, MAX_PREFILL_BUDGET, MIN_PREFILL_BUDGET, ORDERS, Group, Policy
 
 # Under max_tokens_desc a naive group runs until its longest max_tokens. A row whose max_tokens is under
@@ -114,8 +114,8 @@ def group_stats(items, groups, max_batch_tokens, order, padded):
 def auto_max_batch_tokens(cfg, hardware):
     """max_batch_tokens="auto": what the engine measured on its card at load (schema.Hardware), as (budget, where it
     came from). The two engines' values differ, so like-for-like engine rows pass one explicit int to both.
-    naive:      the padded-token budget NaiveNaiveEngine.fit() measured on this card.
-    batchinfer: its KV pool less (BLOCK_SIZE - 1) tokens per row. A row reserves whole blocks, at most 14 tokens past
+    naive:      the padded-token budget NaiveEngine.fit() measured on this card.
+    batchinfer: its KV pool less (block_size - 1) tokens per row. A row reserves whole blocks, at most 14 tokens past
                 its share of the padded footprint, so a group within this budget fits the pool. With prefix
                 sharing, blocks held for later groups can still overrun it; the scheduler refuses such a job before
                 step 1.
@@ -124,8 +124,9 @@ def auto_max_batch_tokens(cfg, hardware):
     if cfg.engine == "naive" and hardware is not None and hardware.max_batch_tokens_fit:
         return hardware.max_batch_tokens_fit, f"measured fit on {hardware.gpu_name}"
     if cfg.engine == "batchinfer" and hardware is not None and hardware.kv_pool_tokens:
-        tokens = hardware.kv_pool_tokens - cfg.max_batch_size * (BLOCK_SIZE - 1)
-        if tokens < BLOCK_SIZE:
+        bs = hardware.kv_block_size or 1
+        tokens = hardware.kv_pool_tokens - cfg.max_batch_size * (bs - 1)
+        if tokens < bs:
             raise ValueError(f"a KV pool of {hardware.kv_pool_tokens:,} tokens leaves {tokens} for groups of "
                              f"{cfg.max_batch_size} rows; lower max_batch_size or pass max_batch_tokens")
         return tokens, f"KV pool of {hardware.kv_pool_tokens:,} tokens"
@@ -144,7 +145,7 @@ def auto_prefill_budget(metrics):
     classify-only jobs (chain ~0) hit the ceiling, generate-only jobs the floor. The formula uses the
     raw prompt tokens even with prefix sharing on (mixed-quick: 583 per step): sizing it from the unique
     prefill (256) only delayed the start of the longest chain and cost steps (562 vs 534 vs 512 at 16384)
-    for the same wall time, measured 2026-09-27."""
+    for the same wall time."""
     chain = metrics["decode_chain"]
     if chain == 0:
         return MAX_PREFILL_BUDGET
@@ -173,15 +174,25 @@ def decide(job, cfg, hardware=None):
         groups, stats, max_batch_tokens, max_batch_size, budget_auto = None, {}, None, None, None
         admission_order = tuple(ordered(job, cfg.order))
     if ours:
-        adaptive = cfg.prefill_budget == "adaptive"  # starts from the auto value, the floor the scheduler raises from
-        auto = adaptive or cfg.prefill_budget == "auto"
-        chunk, budget = cfg.chunk_prefill, auto_prefill_budget(job.metrics) if auto else cfg.prefill_budget
-        sharing = cfg.prefix_sharing
+        # ridge: the card's measured ridge fills every step that has decode rows (scheduler.ridge_budget); a card with
+        # no measurement runs the default budget, and the user is told to calibrate it
+        ridge_tokens = (hardware.ridge_tokens if hardware else None) if cfg.prefill_budget == "ridge" else None
+        ridge = ridge_tokens is not None
+        if cfg.prefill_budget == "ridge" and not ridge:
+            card = (hardware.gpu_name if hardware else None) or "this card"
+            print(f"WARN: prefill_budget=ridge: {card} has no ridge measurement in metrics.CARDS, so the default "
+                  f"budget ({MAX_PREFILL_BUDGET}) runs; measure it with scripts/ridge_calibration.py or pass "
+                  f"--ridge-tokens", file=sys.stderr)
+        auto = cfg.prefill_budget == "auto"
+        chunk = cfg.chunk_prefill
+        budget = auto_prefill_budget(job.metrics) if auto else MAX_PREFILL_BUDGET if cfg.prefill_budget == "ridge" else cfg.prefill_budget
+        sharing, cache, memory, watermark = cfg.sharing, cfg.cache, cfg.memory, cfg.watermark_steps
     else:  # the naive engine prefills each group in one forward and shares nothing
-        chunk = budget = auto = adaptive = sharing = None
+        chunk = budget = auto = ridge = ridge_tokens = sharing = cache = memory = watermark = None
     return Policy(engine=cfg.engine, order=cfg.order, admission_order=admission_order, groups=groups,
                   admission=cfg.admission, chunk_prefill=chunk, prefill_budget=budget, prefill_budget_auto=auto,
-                  prefill_budget_adaptive=adaptive, prefix_sharing=sharing, max_batch_tokens=max_batch_tokens,
+                  prefill_budget_ridge=ridge, ridge_tokens=ridge_tokens, sharing=sharing, cache=cache, memory=memory,
+                  watermark_steps=watermark, max_batch_tokens=max_batch_tokens,
                   max_batch_tokens_auto=budget_auto, max_batch_size=max_batch_size, stats=stats)
 
 
@@ -190,10 +201,10 @@ def describe_policy(policy, job, show=0):
     `show` groups."""
     knobs = f"order={policy.order}, admission={policy.admission}"
     if policy.engine == "batchinfer":
-        how =(" (adaptive: the auto value, raised per step when less decode work is left)"
-               if policy.prefill_budget_adaptive else " (auto)" if policy.prefill_budget_auto else "")
+        how = (f" (ridge: steps with decode rows filled to {policy.ridge_tokens} tokens)" if policy.prefill_budget_ridge
+               else " (auto)" if policy.prefill_budget_auto else "")
         knobs += (f", chunk_prefill={policy.chunk_prefill}, prefill_budget={policy.prefill_budget}{how}, "
-                  f"prefix_sharing={policy.prefix_sharing}")
+                  f"sharing={policy.sharing}, cache={policy.cache}, memory={policy.memory}")
     lines = [f"policy ({policy.engine} engine): {knobs}; admission order head {list(policy.admission_order[:10])}"]
     if policy.groups is None:
         return lines[0]

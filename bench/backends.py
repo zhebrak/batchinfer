@@ -64,15 +64,14 @@ class VLLM:
     trace (default on; --opt trace=false turns it off) records what our engines record, so the page draws the same
     charts: one row per engine iteration from vLLM's own iteration details (prefill tokens and requests, decode
     requests, running and waiting requests, KV cache usage) and one row per request from its request metrics
-    (scheduled, first token, last token). It turns vLLM's stats logging on, replaces vLLM's stat loggers (the
-    per-iteration log lines and Prometheus) with one collector, and wraps the engine core client's get_output to
+    (scheduled, first token, last token). It turns vLLM's stats logging on, replaces vLLM's per-iteration log lines
+    with one collector, and wraps the engine core client's get_output to
     read each iteration's engine-core timestamp: the frontend receives nothing while generate() is still adding
     requests (about 0.9 s for mixed-quick), so its own clock would stamp those iterations late. The wrapper is in
     place during generate() only: left on the client it keeps a reference to it past generate(), and vLLM's
     shutdown then logs "engine core exited unexpectedly". Those are vLLM's unstable interfaces (checked on 0.30.0):
     when one is missing the run goes on untraced and details() says why, since the reference row must never break
-    for a chart. Its cost is below run-to-run noise: four alternating pairs on mixed-quick, Qwen3-0.6B, H100
-    (2026-09-27) timed 2.93 / 2.90 / 3.45 / 2.90 s traced against 2.86 / 3.40 / 2.95 / 2.91 s untraced."""
+    for a chart. Its cost is below run-to-run noise."""
     name = "vllm"
 
     def __init__(self, model, trace=True, **opts):
@@ -91,7 +90,10 @@ class VLLM:
         elif not callable(getattr(getattr(self.llm.llm_engine, "engine_core", None), "get_output", None)):
             self._untraced("vLLM's engine has no engine_core.get_output to read iteration timestamps from")
         else:
-            self.llm.llm_engine.logger_manager.stat_loggers[:] = [self.log]
+            loggers = self.llm.llm_engine.logger_manager.stat_loggers
+            # the trace logger in place of vLLM's periodic log lines; its Prometheus logger stays: it feeds the
+            # engine counters stats() reads (preemptions, prompt tokens scheduled, cache hits)
+            loggers[:] = [self.log] + [l for l in loggers if type(l).__name__ == "PrometheusStatLogger"]
 
     def _untraced(self, reason):
         self.trace, self.trace_error = False, reason
@@ -126,7 +128,34 @@ class VLLM:
                 for r, o in zip(requests, outputs)]
 
     def stats(self):
-        return {"trace": self.trace}
+        out = {"trace": self.trace, "kv_capacity_tokens": self.kv_capacity_tokens()}
+        metrics = self.engine_metrics()
+        return {**out, "metrics": metrics} if metrics else out
+
+    def engine_metrics(self):
+        """vLLM's own counters after the run (LLM.get_metrics, the V1 engine's Prometheus snapshot): preemptions,
+        prompt tokens scheduled (recomputes included), generation tokens, prefix cache queries and hits; None where
+        the engine does not offer them."""
+        if not hasattr(self.llm, "get_metrics"):
+            return None
+        try:
+            out = {}
+            for m in self.llm.get_metrics():
+                if hasattr(m, "value") and m.name.startswith("vllm:"):
+                    out[m.name[5:]] = out.get(m.name[5:], 0) + m.value  # one entry per label set: summed
+            return out or None
+        except Exception as e:  # noqa: BLE001  a metrics API change is not a failed row
+            return {"error": f"{type(e).__name__}: {e}"}
+
+    def kv_capacity_tokens(self):
+        """vLLM's usable KV cache in tokens, from its cache config after load (its "GPU KV cache size" log line is
+        printed by the engine-core process, so it cannot be read here): num_gpu_blocks less the null block its block
+        pool keeps back, times the block size. None when the config is not where 0.30 keeps it."""
+        try:
+            cfg = self.llm.llm_engine.vllm_config.cache_config
+            return (int(cfg.num_gpu_blocks) - 1) * int(cfg.block_size)
+        except (AttributeError, TypeError):
+            return None
 
     def details(self):
         """The last generate() call's trace, in batchinfer's record shape (bench/charts.py reads both alike)."""

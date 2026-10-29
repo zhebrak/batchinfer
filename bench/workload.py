@@ -1,7 +1,7 @@
 """Build benchmark workloads from sources, and describe them.
 
-    python -m bench.workload build --preset mixed --size quick --model Qwen/Qwen3-8B
-    python -m bench.workload build --mix synthetic:320:shared_frac=0.9:groups=4:output_len=64 --model Qwen/Qwen3-8B
+    python -m bench.workload build --preset mixed --size quick --model Qwen/Qwen3-14B
+    python -m bench.workload build --mix synthetic:320:shared_frac=0.9:groups=4:output_len=64 --model Qwen/Qwen3-14B
     python -m bench.workload stats workloads/mixed-quick.jsonl --show 1
 
 A workload is a JSONL file, one request per line, with a .meta.json sidecar holding the
@@ -26,19 +26,76 @@ PRESETS = {
     "generate": "gsm8k:64,wildchat:128",
     "mixed": "mmlu:128,clinc:48,quality:16,gsm8k:32,wildchat:64",
     "demo": "mmlu:48,clinc:24,quality:8,gsm8k:16,wildchat:32:max_output=256",
-    # Prefix-cache sweep: same requests and lengths, only the shared share of each prompt changes.
+    # Prefix-cache sweep: same requests and lengths, only the shared share of each prompt changes (SWEEP_WORKLOADS)
     "sweep0": "synthetic:320:shared_frac=0:groups=8:output_len=64",
+    "sweep10": "synthetic:320:shared_frac=0.1:groups=8:output_len=64",
+    "sweep25": "synthetic:320:shared_frac=0.25:groups=8:output_len=64",
     "sweep50": "synthetic:320:shared_frac=0.5:groups=8:output_len=64",
+    "sweep75": "synthetic:320:shared_frac=0.75:groups=8:output_len=64",
     "sweep90": "synthetic:320:shared_frac=0.9:groups=8:output_len=64",
+    # mixed six times over: the same shared units (MMLU subject shots, CLINC's intent list, QuALITY articles, GSM8K's
+    # shots), so the shared share stays near mixed's 81%, at 1,728 requests. Its KV demand (426k tokens) is about
+    # the pool of an 80 GB card, so even here admission is nearly all at once. The pool-bound regime, admission in
+    # waves, is the suite's capped rows (bench.suite CAP: a quarter of the demand).
+    "pool": "mmlu:768,clinc:288,quality:96,gsm8k:192,wildchat:384",
+    # Long context: 24 prompts of 8,192 tokens and 256 output tokens, with nothing shared and with half of every prompt
+    # shared by 8 rows. At decode the 24 rows' KV (about 203k tokens, 32 GB for Qwen3-14B) outweighs the 29.5 GB of
+    # weights a step reads, so this is where the attention paths (FlashAttention-3, cascade, contiguous KV, fp8 KV)
+    # differ most; every other workload stays under 2,048-token prompts. The uncapped demand fits both engines' pools
+    # on an 80 GB card, so both admit everything at once.
+    "long0x8": "synthetic:24:prompt_len=8192:shared_frac=0.0:groups=3:output_len=256",
+    "long50x8": "synthetic:24:prompt_len=8192:shared_frac=0.5:groups=3:output_len=256",
+    # Many distinct shared prefixes, arriving shuffled (DIVERSE_WORKLOADS): together they hold more KV than an 80 GB
+    # card's pool, so a cache that keeps the most recent prefixes evicts a document before its next question comes,
+    # while an engine that sees the whole job runs each document's requests together. docqa: 384 QuALITY questions
+    # over 96 articles (4 each, ~5-7k tokens of article); rag: 768 generations over 192 synthetic 3.7k-token documents.
+    "docqa": "quality:384:per_article=4",
+    "rag": "synthetic:768:prompt_len=4096:shared_frac=0.9:groups=192:output_len=64",
 }
-# The presets bench.suite runs by default, in the order the report's comparison lists them: mixed; prefill-bound
-# (classify); decode-bound (generate); nothing to share (sweep0); 90% of every prompt shared (sweep90).
-SUITE_PRESETS = ("mixed", "classify", "generate", "sweep0", "sweep90")
+# The suite's default workloads, in the order the report's comparison lists them: mixed; prefill-bound (classify);
+# decode-bound (generate); generate with natural lengths (gsm8k and wildchat stop at EOS under a 512-token cap: the
+# early-EOS regime); nothing to share (sweep0); 90% of every prompt shared (sweep90); pool-bound; and the two
+# long-context ones. A name ending in -natural is its preset built with --lengths natural.
+LONG_WORKLOADS = ("long0x8", "long50x8")
+SUITE_WORKLOADS = ("mixed", "classify", "generate", "generate-natural", "sweep0", "sweep90", "pool") + LONG_WORKLOADS
+# the shared-share sweep (bench.suite --workloads sweep): where the trie starts paying for itself and where the engine
+# passes vLLM, as a function of the share of every prompt that is shared
+SWEEP_WORKLOADS = ("sweep0", "sweep10", "sweep25", "sweep50", "sweep75", "sweep90")
+# The grid (bench.suite --workloads grid, or one family: grid-dec-x32): the shared share again, at three
+# prompt-to-output shapes (prefill-heavy, balanced, decode-heavy) and two fan-outs (rows per shared prefix: the
+# cascade's lever), so each mode's gain can be read against the axis it depends on. Requests per shape keep the
+# uncapped demand under 370k tokens, chain-bound on an 80 GB card; the cap sweep (bench.suite) binds the pool.
+GRID_SHAPES = {"pf": (160, 2048, 16), "bal": (320, 1024, 128), "dec": (320, 256, 512)}  # requests, prompt, output tokens
+GRID_SHARES = (0, 10, 30, 50, 90)  # percent of every prompt shared
+GRID_FANOUT = (4, 32)  # rows per shared prefix
+GRID_FAMILIES = {f"grid-{shape}-x{f}": tuple(f"{shape}{s}x{f}" for s in GRID_SHARES)
+                 for shape in GRID_SHAPES for f in GRID_FANOUT}
+GRID_WORKLOADS = tuple(n for names in GRID_FAMILIES.values() for n in names)
+PRESETS.update({f"{shape}{s}x{f}": f"synthetic:{n}:prompt_len={prompt}:shared_frac={s / 100}:groups={n // f}:output_len={output}"
+                for shape, (n, prompt, output) in GRID_SHAPES.items() for f in GRID_FANOUT for s in GRID_SHARES})
+# QuALITY as a real-text share dial: the same 96 long-document questions over more or fewer articles (per_article),
+# so the shared article is a larger share of each prompt as the questions per article rise
+QUALITY_DIAL = ("quality2", "quality8", "quality16")
+PRESETS.update({f"quality{k}": f"quality:96:per_article={k}" for k in (2, 8, 16)})
+DIVERSE_WORKLOADS = ("docqa", "rag")
+ALIASES = {"diverse": DIVERSE_WORKLOADS, "sweep": SWEEP_WORKLOADS, "grid": GRID_WORKLOADS, "qdial": QUALITY_DIAL, **GRID_FAMILIES}
+
+
+def workload_name(stem, size):
+    """A workload file's suite name: mixed-quick -> mixed, generate-quick-natural -> generate-natural."""
+    return stem.replace(f"-{size}-natural", "-natural").removesuffix(f"-{size}")
+
+
+def workload_rank(stem, size="quick"):
+    """Where a workload sorts in the suite's order; unknown names after the known ones, by name."""
+    name = workload_name(stem, size)
+    return (SUITE_WORKLOADS.index(name) if name in SUITE_WORKLOADS else len(SUITE_WORKLOADS)), name
 SIZES = {"quick": (1, 60), "full": (3, 180)}  # count multiplier, time budget for the timed run in seconds
 HEADROOM = 0.75  # presets keep the cache-off estimate under this share of the budget (45 of 60 s)
 
-# The reference card's rates (Qwen3-8B bf16 on one A100 via vLLM), used only for est_s when sizing presets. Fixed
-# on purpose: a workload file must be byte-identical whichever card or model later runs it.
+# Reference rates (Qwen3-8B bf16 via vLLM on an A100), used only for est_s when sizing presets. Fixed on purpose: a
+# workload file must be byte-identical whichever card or model later runs it; a faster card only makes the estimate
+# pessimistic.
 PREFILL_TPS = 10_000
 DECODE_TPS = 2_500
 STEP_S = 0.012  # one small-batch decode step, which bounds the longest request

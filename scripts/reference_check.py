@@ -6,8 +6,7 @@ For each selected prompt, decode N tokens three ways at batch size 1: the engine
 runs past EOS), `model.generate` (stops at EOS, so it is compared over its own length) and a full
 recompute with no cache. Print the first position where each pair differs, and at the engine's first
 divergence recompute that step's logits and print the top-2 margin: a tiny margin is a bf16 near-tie,
-a large one is a bug to chase (position 0 = prefill/lm_head, later = decode inputs).
-Measured 2026-09-27 on Qwen3-8B / A100: engine == recompute on all 6 smoke prompts, exactly."""
+a large one is a bug to chase (position 0 = prefill/lm_head, later = decode inputs)."""
 import argparse
 import sys
 from pathlib import Path
@@ -62,7 +61,7 @@ def main():
     eng = NaiveEngine(args.model, tok)
     model = eng.model
     out = []
-    cfg = PolicyConfig(engine="naive", order="max_tokens_desc", admission="groups", prefix_sharing=False,
+    cfg = PolicyConfig(engine="naive", order="max_tokens_desc", admission="groups", sharing="none",
                        max_batch_tokens=65536, max_batch_size=1)
     flow.run(reqs, tok, eng, cfg, out.append, Metrics())
     by_id = {res.id: res for res in out}  # results come back in policy order, not input order

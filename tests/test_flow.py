@@ -55,7 +55,7 @@ def measured_keys(m):
     return set(m.counts) | set(m.rates()) | set(trace.step_rates())
 
 
-NAIVE_GROUPS = PolicyConfig(engine="naive", order="max_tokens_desc", admission="groups", prefix_sharing=False,
+NAIVE_GROUPS = PolicyConfig(engine="naive", order="max_tokens_desc", admission="groups", sharing="none",
                              max_batch_tokens=4096, max_batch_size=3)
 
 
@@ -73,7 +73,7 @@ def test_metrics_sections_have_one_owner():
     timings = m.timings()
     assert {"analysis_s", "policy_s", "inference_s", "total_s"} <= set(timings)
     d = m.to_dict()
-    assert d["policy"] == policy.to_dict() and d["analysis"] == job.metrics and "plan" not in d
+    assert d["policy"] == policy.to_dict() and d["analysis"] == job.metrics
 
 
 def test_continuous_admission_reports_no_fixed_groups_budget():
@@ -96,7 +96,7 @@ def test_fixed_groups_are_groups_and_their_budget_is_a_column():
 def test_a_naive_row_records_no_batchinfer_engine_setting():
     _, policy, _, _, m, logged, _ = run(NAIVE_GROUPS)
     recorded = m.to_dict()["policy"]
-    assert recorded["engine"] == "naive" and recorded["prefix_sharing"] is None
+    assert recorded["engine"] == "naive" and recorded["sharing"] is None
     assert recorded["chunk_prefill"] is None and recorded["prefill_budget"] is None
-    assert recorded["prefill_budget_auto"] is None and recorded["prefill_budget_adaptive"] is None
+    assert recorded["prefill_budget_auto"] is None and recorded["prefill_budget_ridge"] is None
     assert "prefill_budget" not in logged[1] and "chunk_prefill" not in logged[1]

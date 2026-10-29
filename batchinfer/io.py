@@ -58,12 +58,17 @@ def read_requests(path, default_max_tokens=128, limit=None):
 
 class ResultWriter:
     """Appends one JSON line per result and flushes each time, so a crash mid-job leaves a usable
-    partial file. Output order is finishing order; consumers match by id."""
+    partial file. Output order is finishing order; consumers match by id. resume: keep an existing file and
+    append to it; self.done holds the ids it already had (a crashed run's results), for the caller to skip."""
 
-    def __init__(self, path):
+    def __init__(self, path, resume=False):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.f = open(self.path, "w")
+        self.done = set()
+        if resume and self.path.exists():
+            with open(self.path) as f:
+                self.done = {json.loads(line)["id"] for line in f if line.strip()}
+        self.f = open(self.path, "a" if resume else "w")
         self.n = 0
 
     def __call__(self, result: Result):

@@ -7,7 +7,7 @@ import pytest
 
 import bench.run
 from bench.report import load, table
-from bench.results import gpu_slug, migrate, relink_references
+from bench.results import gpu_slug
 from bench.run import prefix_match, run, score_choice, score_label, score_number
 from bench.workload import PRESETS, build, parse_mix, unique_tokens, write
 
@@ -207,8 +207,7 @@ def test_run_counts_length_overruns_on_every_row(tmp_path, workload):
 
 
 def test_short_and_empty_length_outputs_are_violations_and_fail_the_run(tmp_path, workload):
-    """finish_reason "length" means max_tokens were produced; an empty output is never valid. Before, a row with
-    no tokens at all counted as fine unless it had ignore_eos."""
+    """finish_reason "length" means max_tokens were produced; an empty output is never valid."""
     path, requests = workload
     assert run(path, "test_bench:Short", out=tmp_path / "s", warmup=False)["length_violations"] == len(requests)
     assert (tmp_path / "s" / "metrics.json").exists()  # the row is written for inspection, then the exit says invalid
@@ -247,7 +246,7 @@ def test_rows_check_stops_against_the_workload_stop_ids(tmp_path, workload):
 
 def test_a_row_torn_after_its_outputs_leaves_no_metrics(tmp_path, workload):
     """metrics.json marks a whole row: an attempt that fails after writing its outputs leaves none, and never the
-    previous attempt's metrics or details beside this one's outputs (before, metrics.json was written first)."""
+    previous attempt's metrics or details beside this one's outputs."""
     path, requests = workload
     out = tmp_path / "row"
     out.mkdir()
@@ -406,56 +405,6 @@ def test_report_skips_metrics_bench_run_did_not_write(tmp_path, workload, capsys
     assert "skipped 1 metrics.json" in capsys.readouterr().err
 
 
-def test_migrate_moves_old_rows_under_their_gpu(tmp_path):
-    def row(rel, outputs="", **metrics):
-        (tmp_path / rel).mkdir(parents=True)
-        (tmp_path / rel / "metrics.json").write_text(json.dumps(metrics))
-        (tmp_path / rel / "outputs.jsonl").write_text(outputs)
-
-    def rel(path):
-        return str(path.relative_to(tmp_path))
-
-    row("w/M/vllm", gpu="NVIDIA A100-SXM4-40GB")
-    row("w/M/dummy", gpu=None)
-    row("w/M/H100-PCIe/vllm", gpu="NVIDIA H100 PCIe")  # already in the new layout
-    row("w/M/v0", memory={"gpu_name": "NVIDIA A100-SXM4-40GB"})  # batchinfer CLI metrics
-    row("w/M/older", memory={})  # no GPU recorded
-    row("w/step", gpu="NVIDIA H100 PCIe")  # a custom --out two levels deep
-    row("x/M/H100-PCIe/vllm", gpu="NVIDIA H100 PCIe")  # migrated earlier ...
-    row("x/M/vllm", gpu="NVIDIA H100 PCIe")  # ... and pulled back in the old layout, with a file the target lacks
-    (tmp_path / "x/M/vllm/details.json").write_text("{}")
-    row("y/M/H100-PCIe/vllm", outputs="a", gpu="NVIDIA H100 PCIe")
-    row("y/M/vllm", outputs="b", gpu="NVIDIA H100 PCIe")  # same row name, different outputs
-    moved, merged, kept = migrate(tmp_path)
-    assert sorted(rel(t) for _, t in moved) == ["w/M/A100-SXM4-40GB/v0", "w/M/A100-SXM4-40GB/vllm", "w/M/cpu/dummy"]
-    assert (tmp_path / "w/M/A100-SXM4-40GB/vllm/outputs.jsonl").exists() and not (tmp_path / "w/M/vllm").exists()
-    assert [(rel(r), rel(t)) for r, t in merged] == [("x/M/vllm", "x/M/H100-PCIe/vllm")]
-    assert (tmp_path / "x/M/H100-PCIe/vllm/details.json").exists() and not (tmp_path / "x/M/vllm").exists()
-    assert [(rel(r), why.split()[-1]) for r, why in kept] == [("w/M/older", "recorded"), ("w/step", "hand"),
-                                                            ("y/M/vllm", "outputs.jsonl")]
-    assert migrate(tmp_path)[:2] == ([], [])  # idempotent
-
-
-def test_relink_references_names_the_reference_by_its_results_tree_path(tmp_path):
-    def row(rel, against):
-        (tmp_path / rel).mkdir(parents=True)
-        metrics = {"wall_s": 1.0, "compare": {"against": against, "generate": {}}}
-        (tmp_path / rel / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
-
-    ref = "results/w/M/H100-PCIe/vllm/outputs.jsonl"
-    row("w/M/H100-PCIe/a", "/srv/clone/results/w/M/H100-PCIe/vllm/outputs.jsonl")  # recorded before the change
-    row("w/M/H100-PCIe/b", ref)  # already relative
-    row("w/M/H100-PCIe/c", "/data/elsewhere/outputs.jsonl")  # an explicit path outside any results tree
-    (tmp_path / "w/M/H100-PCIe/d").mkdir()
-    (tmp_path / "w/M/H100-PCIe/d/metrics.json").write_text(json.dumps({"compare": None}))  # no --compare
-    changed = relink_references(tmp_path)
-    assert [(str(m.parent.name), new) for m, _, new in changed] == [("a", ref)]
-    a = json.loads((tmp_path / "w/M/H100-PCIe/a/metrics.json").read_text())
-    assert a == {"wall_s": 1.0, "compare": {"against": ref, "generate": {}}}  # nothing else changed
-    assert json.loads((tmp_path / "w/M/H100-PCIe/c/metrics.json").read_text())["compare"]["against"].startswith("/data")
-    assert relink_references(tmp_path) == []  # idempotent
-
-
 def test_backend_sees_only_client_fields(tmp_path, workload):
     Recorder.seen = []
     run(workload[0], "test_bench:Recorder", out=tmp_path / "d", warmup=False)
@@ -463,7 +412,7 @@ def test_backend_sees_only_client_fields(tmp_path, workload):
 
 
 def test_parse_value_reads_on_off_as_booleans():
-    """--opt prefix_sharing=off must mean off: a string 'off' would be truthy."""
+    """--opt chunk_prefill=off must mean off: a string 'off' would be truthy."""
     from bench.workload import parse_value
     assert parse_value("on") is True and parse_value("OFF") is False and parse_value("yes") is True and parse_value("no") is False
     assert parse_value("true") is True and parse_value("false") is False
@@ -531,7 +480,7 @@ def test_vllm_trace_records_iterations_and_requests(monkeypatch):
     assert backend.llm.opts == {"disable_log_stats": False, "enable_logging_iteration_details": True}
     assert backend.llm.llm_engine.logger_manager.stat_loggers == [backend.log]  # vLLM's own loggers are replaced
     results = backend.generate(VLLM_REQUESTS)
-    assert [r["output_tokens"] for r in results] == [1, 2] and backend.stats() == {"trace": True}
+    assert [r["output_tokens"] for r in results] == [1, 2] and backend.stats() == {"trace": True, "kv_capacity_tokens": None}
     d = backend.details()
     assert d["meta"] == {"engine": "vllm", "trace": True}
     steps = d["steps"]
@@ -545,7 +494,7 @@ def test_vllm_trace_records_iterations_and_requests(monkeypatch):
     assert trace["prompt_len"] == [3, 4] and trace["finish_reason"] == ["length", "stop"]
     assert trace["admitted_ms"][0] == trace["prefill_start_ms"][0] > 400 and trace["finished_ms"][1] is None
     assert trace["first_token_ms"][0] - trace["admitted_ms"][0] == pytest.approx(10, abs=0.01)
-    drawn, _, _ = charts(d)
+    drawn, _ = charts(d)
     assert {"tokens_per_step", "in_flight", "kv", "prompt_len"} <= {c["id"] for c in drawn}
 
 
@@ -557,7 +506,7 @@ def test_vllm_trace_fails_soft(monkeypatch, capsys, accepts_trace, stat_loggers)
     fake_vllm(monkeypatch, accepts_trace=accepts_trace, stat_loggers=stat_loggers, outputs=vllm_outputs(0.0))
     backend = VLLM("m")
     assert len(backend.generate(VLLM_REQUESTS)) == 2
-    assert backend.stats() == {"trace": False}
+    assert backend.stats() == {"trace": False, "kv_capacity_tokens": None}
     d = backend.details()
     assert d["meta"]["trace"] is False and d["meta"]["trace_error"] and "steps" not in d and "request_trace" not in d
     assert "WARN: vllm trace unavailable" in capsys.readouterr().err
@@ -565,13 +514,13 @@ def test_vllm_trace_fails_soft(monkeypatch, capsys, accepts_trace, stat_loggers)
 
 
 def test_a_vllm_trace_that_breaks_mid_run_drops_the_trace_not_the_row(monkeypatch, capsys):
-    """A vLLM whose iteration details lack a field the log reads: record() runs inside vLLM's engine loop, so before
-    the AttributeError went up through generate() and the reference row was lost for a chart."""
+    """A vLLM whose iteration details lack a field the log reads: record() runs inside vLLM's engine loop, so the
+    AttributeError must not go up through generate() and lose the reference row for a chart."""
     from bench.backends import VLLM
     fake_vllm(monkeypatch, outputs=vllm_outputs(0.0), drop=("num_ctx_tokens",))
     backend = VLLM("m")
     assert [r["output_tokens"] for r in backend.generate(VLLM_REQUESTS)] == [1, 2]
-    assert backend.stats() == {"trace": False}
+    assert backend.stats() == {"trace": False, "kv_capacity_tokens": None}
     d = backend.details()
     assert "num_ctx_tokens" in d["meta"]["trace_error"] and "steps" not in d and "request_trace" not in d
     assert "WARN: vllm trace unavailable" in capsys.readouterr().err
@@ -619,3 +568,12 @@ def test_iteration_log_drops_an_iteration_from_before_this_call():
     log.core_ts = 100.004
     log.record(stats, None)
     assert [r["end_ms"] for r in log.rows] == [4.0]
+
+
+def test_gpu_samples_summarise_to_util_memory_clock_temperature_and_throttle():
+    """nvidia-smi's csv in GpuSampler.QUERY order: throttled counts samples with a reason other than idle (bit 0)."""
+    text = "97, 70000, 1980, 61, 0x0000000000000000\n99, 71000, 1500, 70, 0x0000000000000004\n" \
+           "95, 70500, 1980, 65, 0x0000000000000001\n"
+    assert bench.run.summarise_samples(text) == (97.0, 71000.0, 1820, 70.0, 33.3)
+    assert bench.run.summarise_samples("97, 70000, [N/A], [N/A], [N/A]\n") == (97.0, 70000.0, None, None, None)
+    assert bench.run.summarise_samples("") == (None, None, None, None, None)

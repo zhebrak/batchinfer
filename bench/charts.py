@@ -10,8 +10,7 @@ is measured and nothing is decided.
 
 Every time axis counts seconds since the backend received the job, the same origin on every page. batchinfer's
 engines time from their inference timer, which starts after analysis and policy, so their times are shifted by
-timing.analysis_s + timing.policy_s; vLLM's are from generate()'s start. A record from before end_ms existed has
-its steps drawn against the step index instead, and has no request charts.
+timing.analysis_s + timing.policy_s; vLLM's are from generate()'s start.
 
 What BatchLLM (arXiv 2412.03594) plots, drawn here: tokens per step split into prefill and decode (its Figs 2 and
 10, whose "valleys" are steps too small to fill the GPU), the admission order by decode ratio (its Eq. 2) and the
@@ -25,8 +24,9 @@ violet is KV, grey is waiting or waste. The KV chart's lines are a set of their 
 shared orange, pinned grey): blue beside violet fails the colour-vision check on the dark surface.
 """
 from bisect import bisect_right
+from collections import Counter
 
-from batchinfer.kv import BLOCK_SIZE
+from batchinfer.kv import DEFAULT_BLOCK_SIZE
 
 SCHEMA = "https://vega.github.io/schema/vega-lite/v6.json"
 PALETTES = {
@@ -39,17 +39,13 @@ KINDS = {"generate": "blue", "prefill_only": "orange", "label": "aqua"}  # analy
 STEP_KINDS = {"decode-only": "blue", "prefill-only": "orange", "mixed": "aqua"}
 TIME_AXIS = "s since the job started"
 NAIVE_FINISH = "Naive engine: finish times are apportioned within each group's measured decode time, as latency_s is."
-LEGACY_ENGINES = {"step": "batchinfer", "static": "naive"}  # the engines' names in records before the rename
 
 
 # rows ---------------------------------------------------------------------------------------------------
 
 def engine_of(record):
-    """batchinfer | naive | vllm. Records from before the rename carry step | static; records from before the policy
-    named its engine are told apart by their trace."""
-    named = (record.get("policy") or {}).get("engine") or (record.get("meta") or {}).get("engine")
-    named = LEGACY_ENGINES.get(named, named)
-    return named or ("batchinfer" if record.get("steps") else "naive" if record.get("groups") else None)
+    """batchinfer | naive | vllm: the engine its policy names, or the vLLM backend's meta."""
+    return (record.get("policy") or {}).get("engine") or (record.get("meta") or {}).get("engine")
 
 
 def columnar(cols):
@@ -97,47 +93,39 @@ def request_rows(record, engine):
 
 
 def step_rows(record, engine, requests):
-    """One row per step, with x0/x1 its start and end in seconds since the job started, or its index when the
-    record predates end_ms. The KV shares are of the pool's usable blocks (batchinfer) or vLLM's own usage."""
+    """One row per step, with x0/x1 its start and end in seconds since the job started. The KV shares are of the
+    pool's usable blocks (batchinfer) or vLLM's own usage."""
     steps = columnar(record.get("steps"))
-    timed = bool(steps) and all(s.get("end_ms") is not None for s in steps)
     origin = origin_ms(record, engine)
     capacity = ((record.get("volume") or {}).get("kv_blocks") or 1) - 1  # block 0 is the pad block
-    budget = (record.get("policy") or {}).get("prefill_budget")
     admitted_at = sorted(r["admitted_step"] for r in requests if r.get("admitted_step") is not None)
     rows, prev = [], 0.0
     for k, s in enumerate(steps):
         d, p = s.get("decode_rows") or 0, s.get("prefill_tokens") or 0
         row = {"step": k, "decode_rows": d, "prefill_tokens": p, "prefill_rows": s.get("prefill_rows"), "tokens": d + p,
                "kind": "decode-only" if d and not p else "prefill-only" if p and not d else "mixed"}
-        if timed:
-            row.update(x0=_s(prev, origin), x1=_s(s["end_ms"], origin), interval_ms=round(s["end_ms"] - prev, 3))
-            prev = s["end_ms"]
-        else:
-            row.update(x0=k, x1=k + 1, interval_ms=None)
+        row.update(x0=_s(prev, origin), x1=_s(s["end_ms"], origin), interval_ms=round(s["end_ms"] - prev, 3))
+        prev = s["end_ms"]
         if engine == "vllm":
             # vLLM allocates blocks as tokens are written: its usage is the counterpart of our written, not held
             row.update(running=s.get("running"), waiting=s.get("waiting"), kv_in_use_pct=s.get("kv_cache_usage_pct"))
         else:
-            row.update(admitted=s.get("admitted"), budget=s.get("step_prefill_budget", budget))
+            row.update(admitted=s.get("admitted"), budget=s.get("step_prefill_budget"))
             if admitted_at:  # requests whose KV was not reserved by the end of step k
                 row["waiting"] = len(requests) - bisect_right(admitted_at, k)
             if s.get("kv_reserved_tokens") is not None:  # sampled with kv_written_tokens, at step start
-                row["kv_held_pct"] = _pct(s["kv_reserved_tokens"], BLOCK_SIZE * capacity)
-                row["kv_written_pct"] = _pct(s.get("kv_written_tokens"), BLOCK_SIZE * capacity)
-            elif s.get("free_blocks") is not None:  # older traces: after commit
-                row["kv_held_pct"] = _pct(capacity - s["free_blocks"], capacity)
+                bs = (record.get("volume") or {}).get("kv_block_size") or DEFAULT_BLOCK_SIZE
+                row["kv_held_pct"] = _pct(s["kv_reserved_tokens"], bs * capacity)
+                row["kv_written_pct"] = _pct(s.get("kv_written_tokens"), bs * capacity)
             row.update(kv_trie_pct=_pct(s.get("trie_blocks"), capacity), kv_pinned_pct=_pct(s.get("pinned_blocks"), capacity))
         rows.append(row)
-    return rows, timed
+    return rows
 
 
 def group_rows(record):
-    """Naive engine: one row per fixed group, every figure measured or exact (needs prompt_tokens per group)."""
+    """Naive engine: one row per fixed group, every figure measured or exact."""
     rows = []
     for g in record.get("groups") or []:
-        if g.get("prompt_tokens") is None:
-            return []  # a record from before groups carried their real prompt tokens
         live = g["decode_steps"] * g["n"] - g["wasted_slots"]
         padding = g["n"] * g["padded_len"] - g["prompt_tokens"]
         rows.append({"group": g["group"], "n": g["n"], "padded_len": g["padded_len"], "prefill": g["prompt_tokens"],
@@ -148,18 +136,39 @@ def group_rows(record):
 
 
 def timeline_rows(requests):
-    """The request timeline's segments, requests ranked by prefill start."""
-    timed = [r for r in requests if r["prefill_start_s"] is not None and r["finished_s"] is not None]
-    timed.sort(key=lambda r: (r["prefill_start_s"], r["idx"]))
-    rows = []
-    for rank, r in enumerate(timed):
-        base = {"rank": rank, "id": r["id"], "kind": r["kind"], "prompt_len": r["prompt_len"],
-                "output_tokens": r["output_tokens"]}
-        segments = (("KV reserved, waiting", r["admitted_s"], r["prefill_start_s"]),
-                    ("prefill", r["prefill_start_s"], r["first_token_s"]),
-                    ("decode", r["first_token_s"], r["finished_s"]))
-        rows += [{**base, "phase": phase, "x0": a, "x1": b} for phase, a, b in segments
-                 if a is not None and b is not None and b > a]
+    """How many requests were in each phase over time, stacked from the bottom in PHASES order: prefilling, decoding,
+    holding reserved KV while waiting for their first prefill chunk, and not yet admitted (counted from the first
+    admission, when the engine started stepping). One row per phase per stretch in which its band does not move:
+    {phase, x0, x1, y0, y1, n}."""
+    starts = [r["admitted_s"] for r in requests if r["admitted_s"] is not None]
+    origin = min(starts) if starts else None
+    deltas = {}
+
+    def span(phase, t0, t1):
+        if t0 is not None and t1 is not None and t1 > t0:
+            deltas.setdefault(t0, Counter())[phase] += 1
+            deltas.setdefault(t1, Counter())[phase] -= 1
+    for r in requests:
+        span("queued, no KV", origin, r["admitted_s"])
+        span("KV reserved, waiting", r["admitted_s"], r["prefill_start_s"])
+        span("prefill", r["prefill_start_s"], r["first_token_s"])
+        span("decode", r["first_token_s"], r["finished_s"])
+    rows, last, counts = [], {}, Counter()
+    times = sorted(deltas)
+    for t0, t1 in zip(times, times[1:]):
+        counts.update(deltas[t0])
+        y = 0
+        for phase in PHASES:
+            n = counts[phase]
+            if not n:
+                continue
+            prev = last.get(phase)
+            if prev and prev["x1"] == t0 and (prev["y0"], prev["n"]) == (y, n):
+                prev["x1"] = t1  # the band did not move: one wider row, not one per step
+            else:
+                last[phase] = {"phase": phase, "x0": t0, "x1": t1, "y0": y, "y1": y + n, "n": n}
+                rows.append(last[phase])
+            y += n
     return rows
 
 
@@ -206,8 +215,8 @@ def log_ticks(values):
     return [v for v in steps if lo / 3 < v < hi * 3] or None
 
 
-def x_time(timed, domain=None):
-    enc = q("x0", TIME_AXIS if timed else "step")
+def x_time(domain=None):
+    enc = q("x0", TIME_AXIS, axis={"tickCount": 12})  # a label per ~second on a 10 s job, not one per 0.2 s
     if domain:
         enc["scale"] = {"domain": domain, "nice": False}
     return enc
@@ -228,12 +237,12 @@ STEP_TIP = (("step", "step", ","), ("x0", "start s", ".3f"), ("interval_ms", "st
             ("prefill_rows", "prefill rows", ","))
 
 
-def tokens_spec(p, timed, last, dataset="steps", domain=None, budget=False):
+def tokens_spec(p, last, dataset="steps", domain=None, budget=False):
     """Chart 1: each step's query tokens stacked, prefill below decode (so the prefill band's top reads against the
     budget rule, which caps prefill alone), each step exactly as wide as it ran, and a labelled rule where the last
     step ends (a decode tail can be a hairline under a big prefill, so where the run ends is marked, not left to
-    the eye). last: the last step's index. budget: draw the prefill budget, labelled at the right end, above the
-    decode tail where the plot is empty."""
+    the eye), its label at mid-height, clear of the budget's. last: the last step's index. budget: draw the prefill
+    budget, labelled at the right end, above the decode tail where the plot is empty."""
     series = {"decode tokens": "blue", "prefill tokens": "orange"}
     layers = [{"transform": [{"fold": ["decode_rows", "prefill_tokens"], "as": ["series", "tokens"]},
                              {"calculate": "datum.series === 'decode_rows' ? 'decode tokens' : 'prefill tokens'",
@@ -241,14 +250,14 @@ def tokens_spec(p, timed, last, dataset="steps", domain=None, budget=False):
                              {"calculate": "datum.series === 'prefill tokens' ? 0 : 1", "as": "order"},
                              {"stack": "tokens", "groupby": ["step"], "sort": [{"field": "order"}], "as": ["y0", "y1"]}],
                "mark": {"type": "rect"},
-               "encoding": {"x": x_time(timed, domain), "x2": {"field": "x1"}, "y": q("y0", "tokens per step"),
+               "encoding": {"x": x_time(domain), "x2": {"field": "x1"}, "y": q("y0", "tokens per step"),
                             "y2": {"field": "y1"}, "color": colour(p, "series", series)}}]
-    done = "'done ' + format(datum.x1, '.2f') + ' s'" if timed else "'done after step ' + datum.step"
+    done = "'done ' + format(datum.x1, '.2f') + ' s'"
     layers.append({"transform": [{"filter": f"datum.step === {last}"}, {"calculate": done, "as": "done"}],
                    "layer": [{"mark": {"type": "rule", "color": p["secondary"], "strokeWidth": 1},
                               "encoding": {"x": {"field": "x1", "type": "quantitative"}}},
-                             {"mark": {"type": "text", "align": "right", "baseline": "top", "dx": -4, "y": 2,
-                                       "fontSize": 11, "color": p["secondary"]},
+                             {"mark": {"type": "text", "align": "right", "baseline": "middle", "dx": -4,
+                                       "y": {"expr": "height / 2"}, "fontSize": 11, "color": p["secondary"]},
                               "encoding": {"x": {"field": "x1", "type": "quantitative"},
                                            "text": {"field": "done", "type": "nominal"}}}]})
     if budget:
@@ -266,7 +275,7 @@ def tokens_spec(p, timed, last, dataset="steps", domain=None, budget=False):
     return spec(p, {"data": {"name": dataset}, "layer": layers}, 200)
 
 
-def lines_spec(p, timed, series, y_title, extra_tip=(), height=200):
+def lines_spec(p, series, y_title, extra_tip=(), height=200):
     """Step-after lines over the steps, one per field in series ({field: (label, slot)}), on one axis."""
     labels = {label: slot for label, slot in series.values()}
     names = " : ".join(f"datum.series === '{f}' ? '{label}'" for f, (label, _) in series.items())
@@ -274,7 +283,7 @@ def lines_spec(p, timed, series, y_title, extra_tip=(), height=200):
         {"transform": [{"fold": list(series), "as": ["series", "value"]},
                        {"calculate": f"{names} : datum.series", "as": "series"}],
          "mark": {"type": "line", "interpolate": "step-after", "strokeWidth": 1.5},
-         "encoding": {"x": x_time(timed), "y": q("value", y_title), "color": colour(p, "series", labels)}},
+         "encoding": {"x": x_time(), "y": q("value", y_title), "color": colour(p, "series", labels)}},
         crosshair(p, tip(("step", "step", ","), ("x0", "start s", ".3f"),
                          *[(f, label, ",.4~f") for f, (label, _) in series.items()], *extra_tip))]}, height)
 
@@ -334,23 +343,20 @@ def group_spec(p):
                                                 ("decode_s", "decode s", ".3f"))}})
 
 
-PHASES = {"KV reserved, waiting": "grey", "prefill": "orange", "decode": "blue"}
+PHASES = {"prefill": "orange", "decode": "blue", "KV reserved, waiting": "grey", "queued, no KV": "violet"}  # bottom up
+WAITING = ("KV reserved, waiting", "queued, no KV")  # context: drawn faint, behind the work
 
 
-def timeline_spec(p, n, present):
+def timeline_spec(p, present):
     """present: the phases the data has, so the legend never lists one that is not drawn."""
     phases = {k: v for k, v in PHASES.items() if k in present}
     return spec(p, {"data": {"name": "timeline"}, "mark": {"type": "rect"},
-                    "encoding": {"x": q("x0", TIME_AXIS), "x2": {"field": "x1"},
-                                 # KV held while waiting for prefill is context: it recedes behind the work
-                                 "opacity": {"condition": {"test": "datum.phase === 'KV reserved, waiting'", "value": 0.3},
-                                             "value": 1},
-                                 "y": q("rank", "requests, by prefill start", axis={"format": "d"}, scale={"domain": [0, n]}),
-                                 "y2": {"field": "rank_end"}, "color": colour(p, "phase", phases),
-                                 "tooltip": tip(("id", "id", None), ("phase", "phase", None), ("x0", "from s", ".3f"),
-                                                ("x1", "to s", ".3f"), ("prompt_len", "prompt tokens", ","),
-                                                ("output_tokens", "output tokens", ","))},
-                    "transform": [{"calculate": "datum.rank + 1", "as": "rank_end"}]}, min(360, max(200, n)))
+                    "encoding": {"x": x_time(), "x2": {"field": "x1"}, "y": q("y0", "requests"), "y2": {"field": "y1"},
+                                 "opacity": {"condition": {"test": f"indexof({list(WAITING)}, datum.phase) >= 0",
+                                                           "value": 0.3}, "value": 1},
+                                 "color": colour(p, "phase", phases),
+                                 "tooltip": tip(("phase", "phase", None), ("n", "requests", ","), ("x0", "from s", ".3f"),
+                                                ("x1", "to s", ".3f"))}}, 240)
 
 
 # assembly -----------------------------------------------------------------------------------------------
@@ -361,33 +367,33 @@ def chart(cid, title, description, build, wide=False):
 
 
 def charts(record, reference=None):
-    """(charts, datasets, notes) for one engine record. reference: {"record", "prefix_cache"}, the same job's
+    """(charts, datasets) for one engine record. reference: {"record", "prefix_cache"}, the same job's
     like-for-like vLLM row (bench.report.vllm_reference), whose chart 1 is drawn under this run's on the same time
     axis. Each chart is {id, title, description, wide, light, dark}."""
     engine = engine_of(record)
     requests = request_rows(record, engine)
-    steps, timed = step_rows(record, engine, requests)
-    out, data, notes = [], {}, []
+    steps = step_rows(record, engine, requests)
+    out, data = [], {}
     if steps:
         data["steps"] = steps
         budget = engine == "batchinfer" and any(s.get("budget") is not None for s in steps)
         domain = None
-        ref_steps, ref_timed = step_rows(reference["record"], "vllm", []) if reference else ([], False)
-        if ref_steps and ref_timed and timed:
+        ref_steps = step_rows(reference["record"], "vllm", []) if reference else []
+        if ref_steps:
             domain = [0, max(steps[-1]["x1"], ref_steps[-1]["x1"])]
             data["reference_steps"] = ref_steps
         out.append(chart("tokens_per_step", "Tokens per step: decode vs prefill",
                          "Each step's query tokens, one decode token per decoding request plus the prefill tokens, "
                          "each step as wide as it ran. Low stretches are BatchLLM's valleys (steps too small to fill "
                          "the GPU); the tail after the last prefill is the longest decode chain.",
-                         lambda p: tokens_spec(p, timed, len(steps) - 1, domain=domain, budget=budget), wide=True))
+                         lambda p: tokens_spec(p, len(steps) - 1, domain=domain, budget=budget), wide=True))
         if domain:
             cache = "on" if reference["prefix_cache"] else "off"
             out.append(chart("tokens_per_step_vllm", f"The same job on vLLM, prefix cache {cache}, same time axis",
                              f"vLLM's iterations for this workload, model and GPU, from its own trace, with its prefix "
                              f"cache {cache} as this run's prefix sharing was (like for like): compare where prefill "
                              f"ends and how long the decode tail runs.",
-                             lambda p: tokens_spec(p, True, len(ref_steps) - 1, "reference_steps", domain),
+                             lambda p: tokens_spec(p, len(ref_steps) - 1, "reference_steps", domain),
                              wide=True))
         if engine == "vllm":
             series = {"decode_rows": ("decoding", "blue"), "prefill_rows": ("prefilling", "orange"),
@@ -400,7 +406,7 @@ def charts(record, reference=None):
         out.append(chart("in_flight", "Requests in flight",
                          "How many requests each step decoded and prefilled, how many held KV, and how many still "
                          "waited for admission.",
-                         lambda p: lines_spec(p, timed, series, "requests")))
+                         lambda p: lines_spec(p, series, "requests")))
         kv = {"kv_in_use_pct": ("in use (allocated as written)", "aqua")} if engine == "vllm" else \
             {"kv_held_pct": ("held", "violet")}
         if any(s.get("kv_written_pct") is not None for s in steps):
@@ -416,21 +422,17 @@ def charts(record, reference=None):
                              "Held: KV reserved for admitted requests' whole lives (prompt + max_tokens). Written: "
                              "what those requests have filled so far, the counterpart of vLLM's usage. Shared prefix "
                              "and pinned blocks are the trie's.",
-                             lambda p: lines_spec(p, timed, kv, "% of KV blocks")))
-        if timed:
-            out.append(chart("step_time", "Step time vs step tokens",
-                             "Each step's wall time (end to end, scheduling and commit included) against its query "
-                             "tokens. A flat left edge is a per-step fixed cost; bands at one token count mean the "
-                             "same work took different times, so look for what else changed (steps are in the "
-                             "tooltips).",
-                             lambda p: scatter_spec(p, "tokens", "interval_ms", "query tokens in the step",
-                                                    "step ms (wall)", x_scale="log", y_scale="linear",
-                                                    colours=STEP_KINDS, colour_title="step", data="steps",
-                                                    tooltip=(*STEP_TIP, ("tokens", "tokens", ",")),
-                                                    ticks=log_ticks(s["tokens"] for s in steps))))
-        if not timed:
-            notes.append("This record predates end_ms: its steps are drawn by index, not time, and it has no "
-                         "request trace. A new run draws every chart.")
+                             lambda p: lines_spec(p, kv, "% of KV blocks")))
+        out.append(chart("step_time", "Step time vs step tokens",
+                         "Each step's wall time (end to end, scheduling and commit included) against its query "
+                         "tokens. A flat left edge is a per-step fixed cost; bands at one token count mean the "
+                         "same work took different times, so look for what else changed (steps are in the "
+                         "tooltips).",
+                         lambda p: scatter_spec(p, "tokens", "interval_ms", "query tokens in the step",
+                                                "step ms (wall)", x_scale="log", y_scale="linear",
+                                                colours=STEP_KINDS, colour_title="step", data="steps",
+                                                tooltip=(*STEP_TIP, ("tokens", "tokens", ",")),
+                                                ticks=log_ticks(s["tokens"] for s in steps))))
     groups = group_rows(record) if engine == "naive" else []
     if groups:
         data["groups"] = groups
@@ -438,19 +440,16 @@ def charts(record, reference=None):
                          "Per static batch: real prompt tokens, decode tokens of rows still live, and the waste of "
                          "static batching, padding plus the dead slots of rows that already finished.",
                          group_spec, wide=True))
-    elif engine == "naive":
-        notes.append("This static record predates per-group prompt_tokens, so its group chart is left out.")
     if requests:
         data["requests"] = requests
         timeline = timeline_rows(requests)
         if timeline:
             data["timeline"] = timeline
-            n = len({r["rank"] for r in timeline})
-            out.append(chart("timeline", "Request timeline",
-                             "Every request from its prefill start to its last token, ranked by prefill start: "
-                             "prefill in orange, decode in blue; grey is KV reserved while it waited for its first "
-                             "prefill chunk." + (" " + NAIVE_FINISH if engine == "naive" else ""),
-                             lambda p: timeline_spec(p, n, {t["phase"] for t in timeline}), wide=True))
+            out.append(chart("timeline", "Requests by phase",
+                             "How many requests were prefilling (orange, at the bottom), decoding (blue), holding "
+                             "reserved KV while they waited for their first prefill chunk (grey) and, on top, not yet "
+                             "admitted, at every moment of the job." + (" " + NAIVE_FINISH if engine == "naive" else ""),
+                             lambda p: timeline_spec(p, {t["phase"] for t in timeline}), wide=True))
         out.append(chart("prompt_len", "Prompt length over time",
                          "Each request's prompt tokens at the moment its prefill started: the order the policy chose, "
                          "as it ran.",
@@ -479,4 +478,4 @@ def charts(record, reference=None):
         out.append(chart("output_hist", "Output length distribution",
                          "Output tokens per request, stacked by kind (BatchLLM Fig 5).",
                          lambda p: histogram_spec(p, "output_tokens", "output tokens")))
-    return out, data, notes
+    return out, data

@@ -10,7 +10,11 @@
                     computes a shared block and when it is released
     kv.py           paged KV block bookkeeping (pure Python)
     model.py        loading the HF model; the allocator config, versions and stop ids both engines share
-    executor.py     runs one step: HF layers with our paged attention; no decisions
+    executor.py     runs one step: the model's forward over the pool, eager or from a CUDA graph; no decisions
+    pool.py         where the KV lives: the static, elastic (CUDA virtual memory, vmm.py) and contiguous pools
+    attention.py    how attention is computed over the pool: FlashAttention, the cascade (cascade.py), torch
+    graphs.py       the graphs' keys and one layout for every step; the staging buffers and the step's inputs
+    qwen3_fused.py  Qwen3's layers as one fused forward over HF's weights with vLLM's kernels; fp8.py its fp8 path
     step_engine.py  the batchinfer engine (ours): the loop scheduler -> executor -> commit
     naive.py        the naive engine (the baseline): fixed groups in arrival order as left-padded HF batches
     metrics.py      how this invocation performed; one owner per section

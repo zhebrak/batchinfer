@@ -6,7 +6,7 @@ import pytest
 
 from batchinfer.analysis import analyze, decode_ratio, describe, lcp, unique_prompt_tokens
 from batchinfer.io import read_requests
-from batchinfer.kv import BLOCK_SIZE
+from batchinfer.kv import DEFAULT_BLOCK_SIZE as BLOCK_SIZE
 from batchinfer.prefix import Node, PrefixTrie
 from batchinfer.schema import JobAnalysis, Request
 from bench.workload import unique_tokens as bench_unique_tokens

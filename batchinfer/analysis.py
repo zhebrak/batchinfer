@@ -6,14 +6,15 @@ runs on a CPU.
 """
 from collections import Counter
 
-from .kv import BLOCK_SIZE, reservation_blocks
+from .kv import DEFAULT_BLOCK_SIZE, reservation_blocks
 from .prefix import PrefixTrie
 from .schema import AnalyzedRequest, JobAnalysis
 
 
-def analyze(requests, tokenizer):
+def analyze(requests, tokenizer, block_size=DEFAULT_BLOCK_SIZE):
+    """block_size: the executor's KV block size, the granularity of the prefix trie (Executor.block_size)."""
     items = tokenize(requests, tokenizer)
-    trie = PrefixTrie.build([it.token_ids for it in items], BLOCK_SIZE)
+    trie = PrefixTrie.build([it.token_ids for it in items], block_size)
     return JobAnalysis(requests=items, tokenizer=str(getattr(tokenizer, "name_or_path", type(tokenizer).__name__)),
                        metrics=job_metrics(items, trie), prefix=trie)
 
@@ -21,7 +22,7 @@ def analyze(requests, tokenizer):
 # per request --------------------------------------------------------------------------------------
 
 def kind_of(req):
-    """Exact, not a threshold: the v2 fast path keys on max_tokens == 1; label sets may be multi-token."""
+    """Exact, not a threshold: prefill_only is max_tokens == 1; label sets may be multi-token."""
     if req.max_tokens == 1:
         return "prefill_only"
     if req.labels:
@@ -37,8 +38,7 @@ def decode_ratio(prompt_len, max_tokens):
 
 def tokenize(requests, tok):
     """The one tokenization. Prompts are already chat-templated text, so no special tokens are added
-    (the same call bench.workload uses for prompt_tokens). Label sets are tokenized too, and cached
-    per distinct set, so the v2 classification path needs no contract change."""
+    (the same call bench.workload uses for prompt_tokens). Label sets are tokenized too, once per distinct set."""
     encoded = tok([r.prompt for r in requests], add_special_tokens=False)["input_ids"] if requests else []
     label_cache, items = {}, []
     for req, ids in zip(requests, encoded):
@@ -70,7 +70,7 @@ def unique_prompt_tokens(seqs, page=1):
     """Size of a token-level prefix trie over seqs without building one: sort, and each sequence adds what
     its predecessor does not cover. With page > 1 only whole pages are shared. Same arithmetic as
     bench.workload.unique_tokens. The block trie's unique_prefill_tokens (prefix.py) is the same at
-    page=BLOCK_SIZE except that it keeps every prompt's last block private."""
+    page=block_size except that it keeps every prompt's last block private."""
     unique, prev = 0, ()
     for s in sorted(seqs):
         unique += len(s) - lcp(s, prev) // page * page
@@ -93,7 +93,8 @@ def job_metrics(items, trie):
     kinds = Counter(it.kind for it in items)
     plen, mtok = pcts([it.prompt_len for it in items]), pcts([it.req.max_tokens for it in items])
     decode_max = sum(it.req.max_tokens - 1 for it in items)
-    reserved = [BLOCK_SIZE * reservation_blocks(it.prompt_len, it.req.max_tokens) for it in items]
+    bs = trie.block_size
+    reserved = [bs * reservation_blocks(it.prompt_len, it.req.max_tokens, bs) for it in items]
     prefix = trie.metrics()
     return {
         "requests": len(items),

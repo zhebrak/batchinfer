@@ -54,6 +54,11 @@ def fuse_projections(model):
             mlp.gate_up_weight = _concat(mlp.gate_proj, mlp.up_proj)
 
 
+def _proj(x, w):
+    """x @ W^T for a bf16 weight tensor, or an fp8.Linear8."""
+    return w(x) if callable(w) else F.linear(x, w)
+
+
 def _concat(*linears):
     w = torch.cat([lin.weight.detach() for lin in linears])
     offset = 0
@@ -66,14 +71,15 @@ def _concat(*linears):
 
 class FusedQwen3:
     """The forward. It reads the executor's KV pool and FlashAttention call at every step (the pool is replaced once,
-    after the sizing probe), and takes the same step inputs as HF layers do (executor._Batch)."""
+    after the sizing probe), and takes the same step inputs as HF layers do (graphs.Inputs)."""
 
-    def __init__(self, model, executor, qk_norm_rope="fused"):
+    def __init__(self, model, executor, qk_norm_rope="fused", quant="none"):
         """qk_norm_rope: "fused" (one kernel for both head norms and RoPE) or "split" (two rms_norm launches and
-        rotary_embedding), the check that the fused kernel matches."""
+        rotary_embedding), the check that the fused kernel matches. quant: "none", or "fp8" for the four projections
+        of every layer as fp8.Linear8 (the bf16 copies freed, so HF's own forward no longer runs on this model)."""
         from vllm import _custom_ops as ops  # loads vLLM's kernel library only
         self.ops, self.silu_and_mul = ops, torch.ops._C.silu_and_mul
-        self.ex, self.qk_norm_rope = executor, qk_norm_rope
+        self.ex, self.qk_norm_rope, self.quant = executor, qk_norm_rope, quant
         cfg, inner = model.config, model.model
         self.eps = cfg.rms_norm_eps
         self.heads, self.kv_heads, self.head_dim = cfg.num_attention_heads, cfg.num_key_value_heads, executor.head_dim
@@ -83,6 +89,16 @@ class FusedQwen3:
         self.layers = [(l.input_layernorm.weight, l.self_attn.qkv_weight, l.self_attn.q_norm.weight,
                         l.self_attn.k_norm.weight, l.self_attn.o_proj.weight, l.post_attention_layernorm.weight,
                         l.mlp.gate_up_weight, l.mlp.down_proj.weight) for l in inner.layers]
+        if quant == "fp8":
+            from .fp8 import Linear8
+            self.layers = [(w_in, Linear8(w_qkv, ops), w_qn, w_kn, Linear8(w_o, ops), w_post, Linear8(w_gu, ops),
+                            Linear8(w_down, ops)) for w_in, w_qkv, w_qn, w_kn, w_o, w_post, w_gu, w_down in self.layers]
+            for l in inner.layers:  # the bf16 projections, freed: HF's Linear weights were views of these
+                del l.self_attn.qkv_weight, l.mlp.gate_up_weight
+                for lin in (l.self_attn.q_proj, l.self_attn.k_proj, l.self_attn.v_proj, l.self_attn.o_proj,
+                            l.mlp.gate_proj, l.mlp.up_proj, l.mlp.down_proj):
+                    lin.weight = None
+            torch.cuda.empty_cache()
         rot = inner.rotary_emb
         if rot.rope_type != "default" or float(rot.attention_scaling) != 1.0:
             raise ValueError(f"fused layers build plain RoPE; the model's is {rot.rope_type!r} scaled by "
@@ -93,7 +109,8 @@ class FusedQwen3:
         freqs = torch.outer(torch.arange(executor.max_positions, dtype=torch.float32, device=device),
                             rot.inv_freq.float().to(device))
         self.cos_sin = torch.cat([freqs.cos(), freqs.sin()], dim=-1).to(self.embed.dtype)
-        self.one = torch.ones((), dtype=torch.float32, device=device)  # the KV write's scales (no quantisation)
+        # the KV write's cache dtype: the executor's pool ("auto": as the model), or fp8 at the executor's unit scale
+        self.cache_dtype = "fp8" if executor.pool_dtype == torch.float8_e4m3fn else "auto"
 
     def logits(self, b):
         """[sampling rows, vocab] logits of one step; writes the step's K/V into the pool."""
@@ -109,14 +126,14 @@ class FusedQwen3:
                 ops.rms_norm(h, res, w_in, eps)
             else:  # res += h (the previous layer's MLP output); h = norm(res) * w
                 ops.fused_add_rms_norm(h, res, w_in, eps)
-            q, k, v = self._qkv(F.linear(h, w_qkv), pos, w_qn, w_kn, n)
-            ops.reshape_and_cache_flash(k, v, self.ex.kv[i, 0], self.ex.kv[i, 1], b.slot_mapping, "auto", self.one,
-                                        self.one)
-            o = self.ex._flash(q, i, b, self.scaling)
-            h = F.linear(o.view(n, -1), w_o)
+            q, k, v = self._qkv(_proj(h, w_qkv), pos, w_qn, w_kn, n)
+            ops.reshape_and_cache_flash(k, v, self.ex.pool.k_cache(i), self.ex.pool.v_cache(i), b.slot_mapping, self.cache_dtype,
+                                        self.ex.kv_scale, self.ex.kv_scale)
+            o = self.ex.attn.run(q, self.ex.pool, i, b, self.scaling)
+            h = _proj(o.view(n, -1), w_o)
             ops.fused_add_rms_norm(h, res, w_post, eps)
-            self.silu_and_mul(act, F.linear(h, w_gu))
-            h = F.linear(act, w_down)
+            self.silu_and_mul(act, _proj(h, w_gu))
+            h = _proj(act, w_down)
         ops.fused_add_rms_norm(h, res, self.final_norm, eps)
         if not b.all_sample:
             h = h[b.sample_idx]
